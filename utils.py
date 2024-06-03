@@ -1,6 +1,7 @@
 import trimesh
 import numpy as np
 
+
 def sample_points_on_mesh(mesh, num_points):
     """
     Sample random points uniformly distributed on the surface of the mesh.
@@ -32,6 +33,6 @@ def sample_points_on_mesh(mesh, num_points):
     w = 1 - u - v
 
     # Calculate the points
-    points = (triangles[:, 0] * u + triangles[:, 1] * v + triangles[:, 2] * w)
+    points = triangles[:, 0] * u + triangles[:, 1] * v + triangles[:, 2] * w
 
     return points
