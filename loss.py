@@ -69,3 +69,20 @@ def surface_loss(uvs, points, model: Nuvo):
             min_distance = min(min_distance, distance)
         loss += min_distance / T
     return loss
+
+
+def cluster_loss(points, model: Nuvo):
+    G = len(points)
+    loss = 0
+    for p in points:
+        chart_probs = model.chart_assignment_mlp(p)
+        for chart_idx in range(model.n_charts):
+            numerator, denominator = 0, 0
+            for p_prime in points:
+                chart_probs_prime = model.chart_assignment_mlp(p_prime)
+                numerator += chart_probs_prime[chart_idx] * p_prime
+                denominator += chart_probs_prime[chart_idx]
+            centroid = numerator / denominator
+            loss += chart_probs[chart_idx] * F.mse_loss(p, centroid)
+    loss /= G
+    return loss
