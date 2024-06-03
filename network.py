@@ -8,7 +8,7 @@ def positional_encoding(x, degree=1):
     """
     Apply positional encoding to the input tensor x.
 
-    :param x: Input tensor of shape (batch_size, 3).
+    :param x: Input tensor of shape (batch_size, 2 | 3).
     :param degree: Degree of positional encoding.
     :return: Positional encoded tensor.
     """
@@ -63,7 +63,7 @@ class ChartAssignmentMLP(nn.Module):
         """
         x = positional_encoding(x, self.degree)
         logits = self.model(x)
-        probabilities = F.softmax(logits, dim=1)
+        probabilities = F.softmax(logits, dim=0)
         return probabilities
 
 
@@ -95,7 +95,7 @@ class TextureCoordinateMLP(nn.Module):
         )  # Adjust input_dim based on positional encoding
         self.n_charts = n_charts
 
-        self.model = nn.ModuleList()
+        self.mlps = nn.ModuleList()
         for _ in range(n_charts):
             layers = [nn.Linear(self.input_dim, hidden_dim), nn.ReLU()]
             for _ in range(num_layers - 2):
@@ -103,23 +103,29 @@ class TextureCoordinateMLP(nn.Module):
                 layers.append(nn.ReLU())
             layers.append(nn.Linear(hidden_dim, output_dim))
             layers.append(nn.Sigmoid())  # To ensure output is between 0 and 1
-            self.model.append(nn.Sequential(*layers))
+            self.mlps.append(nn.Sequential(*layers))
 
-    def forward(self, x):
+    def forward(self, x, mlp_idx: int = None):
         """
         Forward pass of the MLP.
 
         :param x: Input tensor of shape (batch_size, 3).
-        :return: List of output tensors for each chart, each of shape (batch_size, 2).
+        :return: outputs tensor from the MLP at index mlp_idx, of shape (batch_size, 2).
         """
         x = positional_encoding(x, self.degree)
-        outputs = [mlp(x) for mlp in self.mlps]
-        return outputs
+        output = self.mlps[mlp_idx](x)
+        return output
 
 
 class SurfaceCoordinateMLP(nn.Module):
     def __init__(
-        self, input_dim=2, output_dim=3, hidden_dim=256, num_layers=8, n_charts=8
+        self,
+        input_dim=2,
+        output_dim=3,
+        hidden_dim=256,
+        num_layers=8,
+        degree=4,
+        n_charts=8,
     ):
         """
         Initialize the MLP for surface coordinate mapping.
@@ -132,7 +138,10 @@ class SurfaceCoordinateMLP(nn.Module):
         """
         super(SurfaceCoordinateMLP, self).__init__()
 
-        self.input_dim = input_dim
+        self.degree = degree
+        self.input_dim = input_dim * (
+            2 * degree + 1
+        )  # Adjust input_dim based on positional encoding
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
@@ -147,12 +156,48 @@ class SurfaceCoordinateMLP(nn.Module):
             layers.append(nn.Linear(hidden_dim, output_dim))
             self.mlps.append(nn.Sequential(*layers))
 
-    def forward(self, x):
+    def forward(self, x, mlp_idx: int = None):
         """
         Forward pass of the MLP.
 
         :param x: Input tensor of shape (batch_size, 2).
-        :return: List of output tensors for each chart, each of shape (batch_size, 3).
+        :return: outputs tensor from the MLP at index mlp_idx, of shape (batch_size, 3).
         """
-        outputs = [mlp(x) for mlp in self.mlps]
-        return outputs
+        x = positional_encoding(x, self.degree)
+        output = self.mlps[mlp_idx](x)
+        return output
+
+
+class Nuvo(nn.Module):
+    def __init__(self, input_dim=3, hidden_dim=256, num_layers=8, degree=1, n_charts=8):
+        super(Nuvo, self).__init__()
+
+        self.n_charts = n_charts
+
+        self.chart_assignment_mlp = ChartAssignmentMLP(
+            input_dim=input_dim,
+            output_dim=n_charts,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            degree=degree,
+        )
+
+        self.texture_coordinate_mlp = TextureCoordinateMLP(
+            input_dim=input_dim,
+            output_dim=2,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            degree=degree,
+            n_charts=n_charts,
+        )
+
+        self.surface_coordinate_mlp = SurfaceCoordinateMLP(
+            input_dim=2,
+            output_dim=input_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            n_charts=n_charts,
+        )
+
+    def forward(self, x):
+        pass
