@@ -86,3 +86,10 @@ def cluster_loss(points, model: Nuvo):
             loss += chart_probs[chart_idx] * F.mse_loss(p, centroid)
     loss /= G
     return loss
+
+
+def conformal_loss(points, model: Nuvo):
+    pass
+
+def stretch_loss(points, model: Nuvo):
+    pass
