@@ -1,5 +1,8 @@
 import trimesh
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.autograd as autograd
 
 
 def sample_points_on_mesh(mesh, num_points):
@@ -36,3 +39,114 @@ def sample_points_on_mesh(mesh, num_points):
     points = triangles[:, 0] * u + triangles[:, 1] * v + triangles[:, 2] * w
 
     return points
+
+
+def random_tangent_vectors(normal):
+    """
+    Generate random orthogonal tangent vectors given a normal vector.
+
+    :param normal: The normal vector of shape (3,).
+    :return: Two orthogonal tangent vectors of shape (3,) each.
+    """
+    normal = normal / torch.norm(normal)
+    tangent1 = torch.rand(3)
+    tangent1 -= tangent1.dot(normal) * normal
+    tangent1 /= torch.norm(tangent1)
+
+    tangent2 = torch.linalg.cross(normal, tangent1)
+    tangent2 /= torch.norm(tangent2)
+
+    return tangent1, tangent2
+
+
+def compute_jacobian(mlp, chart_idx, x):
+    """
+    Compute the Jacobian matrix of the MLP at point x using automatic differentiation.
+
+    :param mlp: The MLP representing the texture coordinate mapping.
+    :param x: The input point of shape (3,).
+    :return: The Jacobian matrix of shape (2, 3).
+    """
+    x = x.unsqueeze(0)  # Convert to shape (1, 3) for batch processing
+
+    # Compute the gradient with respect to the input
+    x.requires_grad_(True)
+    y = mlp(x, chart_idx)
+
+    jacobian = []
+    for i in range(y.shape[1]):
+        grads = autograd.grad(
+            outputs=y[:, i],
+            inputs=x,
+            grad_outputs=torch.ones_like(y[:, i]),
+            retain_graph=True,
+            create_graph=True,
+        )[0]
+        jacobian.append(grads)
+
+    jacobian = torch.stack(jacobian, dim=0).squeeze(1)  # Shape (2, 3)
+    return jacobian
+
+
+def compute_uv_vectors(mlp, x, normal, chart_idx, epsilon=1e-2):
+    """
+    Compute the UV vectors for given point x using the MLP and perturbations.
+
+    :param mlp: The MLP representing the texture coordinate mapping.
+    :param x: The input point of shape (3,).
+    :param normal: The normal vector at point x of shape (3,).
+    :param epsilon: Small perturbation value.
+    :return: The UV vectors Dti(εpx) and Dti(εqx).
+    """
+    tangent1, tangent2 = random_tangent_vectors(normal)
+
+    jacobian = compute_jacobian(mlp, chart_idx, x)
+
+    # Transform the tangent vectors using the Jacobian matrix
+    Dti_px = jacobian @ (epsilon * tangent1)
+    Dti_qx = jacobian @ (epsilon * tangent2)
+
+    return Dti_px, Dti_qx
+
+
+def bilinear_interpolation(grid, uv):
+    """
+    Perform bilinear interpolation on a 2D grid given UV coordinates.
+
+    :param grid: A 2D grid of shape (H, W, C).
+    :param uv: UV coordinates of shape (2).
+    :return: Interpolated values of shape (N, C).
+    """
+    H, W, C = grid.shape
+    u, v = uv[0], uv[1]
+
+    u = u * (W - 1)
+    v = v * (H - 1)
+
+    u0 = torch.floor(u).long()
+    v0 = torch.floor(v).long()
+    u1 = u0 + 1
+    v1 = v0 + 1
+
+    u0 = torch.clamp(u0, 0, W - 1)
+    v0 = torch.clamp(v0, 0, H - 1)
+    u1 = torch.clamp(u1, 0, W - 1)
+    v1 = torch.clamp(v1, 0, H - 1)
+
+    Ia = grid[v0, u0]
+    Ib = grid[v1, u0]
+    Ic = grid[v0, u1]
+    Id = grid[v1, u1]
+
+    wa = (u1 - u) * (v1 - v)
+    wb = (u1 - u) * (v - v0)
+    wc = (u - u0) * (v1 - v)
+    wd = (u - u0) * (v - v0)
+
+    interpolated = (
+        wa.unsqueeze(-1) * Ia
+        + wb.unsqueeze(-1) * Ib
+        + wc.unsqueeze(-1) * Ic
+        + wd.unsqueeze(-1) * Id
+    )
+    return interpolated

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from network import Nuvo
+from utils import compute_uv_vectors, bilinear_interpolation
 
 
 def three_two_three_loss(points, model: Nuvo):
@@ -88,8 +89,60 @@ def cluster_loss(points, model: Nuvo):
     return loss
 
 
-def conformal_loss(points, model: Nuvo):
-    pass
+def conformal_loss(points, normals, model: Nuvo):
+    G = len(points)
+    loss = 0
+    for p, n in zip(points, normals):
+        chart_probs = model.chart_assignment_mlp(p)
+        for chart_idx in range(model.n_charts):
+            Dti_px, Dti_qx = compute_uv_vectors(
+                model.texture_coordinate_mlp, p, n, chart_idx
+            )
+            cosine_similarity = torch.dot(Dti_px, Dti_qx) / (
+                torch.norm(Dti_px) * torch.norm(Dti_qx)
+            )
+            loss += chart_probs[chart_idx] * (cosine_similarity**2)
+    loss /= G
+    return loss
 
-def stretch_loss(points, model: Nuvo):
-    pass
+
+def stretch_loss(points, normals, sigma: nn.Parameter, model: Nuvo):
+    G = len(points)
+    loss = 0
+    for p, n in zip(points, normals):
+        chart_probs = model.chart_assignment_mlp(p)
+        for chart_idx in range(model.n_charts):
+            Dti_px, Dti_qx = compute_uv_vectors(
+                model.texture_coordinate_mlp, p, n, chart_idx
+            )
+            # pad with zeros to make the cross product work
+            Dti_px = torch.cat((Dti_px, torch.zeros(1)), 0)
+            Dti_qx = torch.cat((Dti_qx, torch.zeros(1)), 0)
+            area = torch.norm(torch.cross(Dti_px, Dti_qx))
+            loss += chart_probs[chart_idx] * (torch.norm(area - sigma) ** 2)
+    loss /= G
+    return loss
+
+
+def texture_loss(points, normal_grids, surface_normals, model: Nuvo):
+    """
+    Compute the texture loss according to the given formula.
+    :param points: A list of sampled 3D points from the scene. Shape (G, 3).
+    :param normal_grids: A list of 2D grids representing normal maps for each chart. Shape (num_charts, H, W, 3).
+    :param surface_normals: A list of surface normals for each point. Shape (G, 3).
+    :param model: The Nuvo model.
+    :return: The texture loss.
+    """
+
+    G = len(points)
+    loss = 0
+
+    for p, n in zip(points, surface_normals):
+        chart_probs = model.chart_assignment_mlp(p)
+        for chart_idx in range(model.n_charts):
+            uv = model.texture_coordinate_mlp(p, chart_idx)
+            normal_map = normal_grids[chart_idx]
+            normal = bilinear_interpolation(normal_map, uv)
+            loss += chart_probs[chart_idx] * F.mse_loss(n, normal)
+    loss /= G
+    return loss
