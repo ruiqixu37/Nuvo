@@ -1,5 +1,7 @@
 import torch
 import trimesh
+import wandb
+import os
 import torch.nn as nn
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import argparse
@@ -18,7 +20,9 @@ def main(config_path: str):
     sigma = nn.Parameter(torch.tensor(1.0, device=device))
     texture_map_res = int(256 * ((2 / conf.model.num_charts) ** 0.5))
     texture_maps = nn.Parameter(
-        torch.randn(conf.model.num_charts, texture_map_res, texture_map_res, 6, device=device)
+        torch.randn(
+            conf.model.num_charts, texture_map_res, texture_map_res, 6, device=device
+        )
     )
 
     # optimizers and schedulers
@@ -31,6 +35,11 @@ def main(config_path: str):
         [texture_maps], lr=conf.optimizer.normal_grids_lr
     )
     scheduler_texture_maps = CosineAnnealingLR(optimizer_texture_maps, T_max=T_max)
+
+    # optional wandb logging
+    if conf.train.use_wandb:
+        wandb.config = OmegaConf.to_container(conf, resolve=True)
+        wandb.init(project="Nuvo", name=conf.train.name)
 
     # load mesh
     mesh = trimesh.load_mesh(conf.train.mesh_path)
@@ -50,7 +59,7 @@ def main(config_path: str):
             uvs = torch.tensor(uvs, dtype=torch.float32, device=device)
 
             # compute losses
-            loss = compute_loss(
+            loss_dict = compute_loss(
                 conf,
                 points,
                 normals,
@@ -60,13 +69,21 @@ def main(config_path: str):
                 texture_maps,
             )
 
-            loss.backward()
+            loss_dict["loss_combined"].backward()
             optimizer_nuvo.step()
             optimizer_sigma.step()
             optimizer_texture_maps.step()
             scheduler_nuvo.step()
             scheduler_sigma.step()
             scheduler_texture_maps.step()
+
+            # logging
+            if conf.train.use_wandb:
+                wandb.log({k: v.item() for k, v in loss_dict.items()})
+            else:
+                print(
+                    f"Epoch: {epoch}, Iter: {i}, Total Loss: {loss_dict['loss_combined'].item()}"
+                )
 
 
 if __name__ == "__main__":

@@ -26,7 +26,19 @@ def compute_loss(conf, points, normals, uvs, model, sigma, texture_maps):
         + conf.loss.texture * texture
     )
 
-    return loss
+    loss_dict = {
+        "three_two_three": three_two_three,
+        "two_three_two": two_three_two,
+        "entropy": entropy,
+        "surface": surface,
+        "cluster": cluster,
+        "conformal": conformal,
+        "stretch": stretch,
+        "texture": texture,
+        "loss_combined": loss,
+    }
+
+    return loss_dict
 
 
 def three_two_three_loss(points, model: Nuvo):
