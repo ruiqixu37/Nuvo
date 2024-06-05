@@ -6,11 +6,13 @@ model:
   t_pe_degree: 4
   s_pe_degree: 4
 train:
+  name: nefertiti
   mesh_path: data/nefertiti.obj
   epochs: 1
-  iters: 10000
-  G_num: 10000
-  T_num: 10000
+  iters: 100
+  G_num: 5000
+  T_num: 5000
+  use_wandb: True
 loss:
   three_two_three: 1
   two_three_two: 1
