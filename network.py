@@ -75,7 +75,7 @@ class TextureCoordinateMLP(nn.Module):
         hidden_dim=256,
         num_layers=8,
         degree=4,
-        n_charts=8,
+        num_charts=8,
     ):
         """
         Initialize the MLP with positional encoding for texture coordinate mapping.
@@ -85,7 +85,7 @@ class TextureCoordinateMLP(nn.Module):
         :param hidden_dim: Number of hidden units in each layer.
         :param num_layers: Number of fully-connected layers.
         :param degree: Degree of positional encoding.
-        :param n_charts: Number of charts (i.e., number of MLPs).
+        :param num_charts: Number of charts (i.e., number of MLPs).
         """
         super(TextureCoordinateMLP, self).__init__()
 
@@ -93,10 +93,10 @@ class TextureCoordinateMLP(nn.Module):
         self.input_dim = input_dim * (
             2 * degree + 1
         )  # Adjust input_dim based on positional encoding
-        self.n_charts = n_charts
+        self.num_charts = num_charts
 
         self.mlps = nn.ModuleList()
-        for _ in range(n_charts):
+        for _ in range(num_charts):
             layers = [nn.Linear(self.input_dim, hidden_dim), nn.ReLU()]
             for _ in range(num_layers - 2):
                 layers.append(nn.Linear(hidden_dim, hidden_dim))
@@ -125,7 +125,7 @@ class SurfaceCoordinateMLP(nn.Module):
         hidden_dim=256,
         num_layers=8,
         degree=4,
-        n_charts=8,
+        num_charts=8,
     ):
         """
         Initialize the MLP for surface coordinate mapping.
@@ -134,7 +134,7 @@ class SurfaceCoordinateMLP(nn.Module):
         :param output_dim: Dimension of the output, which is 3 for 3D point coordinates.
         :param hidden_dim: Number of hidden units in each layer.
         :param num_layers: Number of fully-connected layers.
-        :param n_charts: Number of charts (i.e., number of MLPs).
+        :param num_charts: Number of charts (i.e., number of MLPs).
         """
         super(SurfaceCoordinateMLP, self).__init__()
 
@@ -145,10 +145,10 @@ class SurfaceCoordinateMLP(nn.Module):
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
-        self.n_charts = n_charts
+        self.num_charts = num_charts
 
         self.mlps = nn.ModuleList()
-        for _ in range(n_charts):
+        for _ in range(num_charts):
             layers = [nn.Linear(self.input_dim, hidden_dim), nn.ReLU()]
             for _ in range(num_layers - 2):
                 layers.append(nn.Linear(hidden_dim, hidden_dim))
@@ -169,17 +169,26 @@ class SurfaceCoordinateMLP(nn.Module):
 
 
 class Nuvo(nn.Module):
-    def __init__(self, input_dim=3, hidden_dim=256, num_layers=8, degree=1, n_charts=8):
+    def __init__(
+        self,
+        input_dim=3,
+        hidden_dim=256,
+        num_layers=8,
+        c_pe_degree=1,
+        t_pe_degree=4,
+        s_pe_degree=4,
+        num_charts=8,
+    ):
         super(Nuvo, self).__init__()
 
-        self.n_charts = n_charts
+        self.num_charts = num_charts
 
         self.chart_assignment_mlp = ChartAssignmentMLP(
             input_dim=input_dim,
-            output_dim=n_charts,
+            output_dim=num_charts,
             hidden_dim=hidden_dim,
             num_layers=num_layers,
-            degree=degree,
+            degree=c_pe_degree,
         )
 
         self.texture_coordinate_mlp = TextureCoordinateMLP(
@@ -187,8 +196,8 @@ class Nuvo(nn.Module):
             output_dim=2,
             hidden_dim=hidden_dim,
             num_layers=num_layers,
-            degree=degree,
-            n_charts=n_charts,
+            degree=t_pe_degree,
+            num_charts=num_charts,
         )
 
         self.surface_coordinate_mlp = SurfaceCoordinateMLP(
@@ -196,7 +205,8 @@ class Nuvo(nn.Module):
             output_dim=input_dim,
             hidden_dim=hidden_dim,
             num_layers=num_layers,
-            n_charts=n_charts,
+            degree=s_pe_degree,
+            num_charts=num_charts,
         )
 
     def forward(self, x):

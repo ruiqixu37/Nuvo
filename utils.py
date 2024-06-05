@@ -5,13 +5,27 @@ import torch.nn as nn
 import torch.autograd as autograd
 
 
+def sample_uv_points(num_points):
+    """
+    Sample random UV points uniformly distributed in the unit square.
+
+    :param num_points: The number of points to sample.
+    :return: An array of sampled UV points of shape (num_points, 2).
+    """
+    points = np.random.rand(num_points, 2)
+    return points
+
+
 def sample_points_on_mesh(mesh, num_points):
     """
     Sample random points uniformly distributed on the surface of the mesh.
 
     :param mesh: A trimesh object.
     :param num_points: The number of points to sample.
-    :return: An array of sampled points of shape (num_points, 3).
+    :return: 1. An array of sampled points of shape (num_points, 3).
+        2. An array of vertex normals at the sampled points of shape (num_points, 3).
+        Note: For simplicity, the vertex normals are equal to face normals,
+        because the sampled points are not necessarily on the vertices most of the time.
     """
     # Calculate the area of each triangle
     areas = mesh.area_faces
@@ -26,7 +40,6 @@ def sample_points_on_mesh(mesh, num_points):
 
     # Get vertices of the selected triangles
     triangles = mesh.triangles[triangle_indices]
-    print(triangles.shape)
     # Sample random points in each triangle using barycentric coordinates
     u = np.random.rand(num_points, 1)
     v = np.random.rand(num_points, 1)
@@ -37,8 +50,10 @@ def sample_points_on_mesh(mesh, num_points):
 
     # Calculate the points
     points = triangles[:, 0] * u + triangles[:, 1] * v + triangles[:, 2] * w
+    
+    normals = mesh.face_normals[triangle_indices]
 
-    return points
+    return points, normals
 
 
 def random_tangent_vectors(normal):
