@@ -7,6 +7,7 @@ import torch.autograd as autograd
 
 from network import Nuvo
 
+
 def set_all_seeds(seed):
     """
     Set all seeds for reproducibility.
@@ -20,6 +21,23 @@ def set_all_seeds(seed):
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+def normalize_mesh(mesh):
+    """
+    Normalize the mesh to fit within the unit cube.
+
+    :param mesh: The trimesh object.
+    :return: The normalized mesh.
+    """
+    vertices = mesh.vertices
+    min_bound = np.min(vertices, axis=0)
+    max_bound = np.max(vertices, axis=0)
+    scale = np.max(max_bound - min_bound)
+    center = (max_bound + min_bound) / 2
+    mesh.vertices = (vertices - center) / scale
+    return mesh
+
 
 def sample_uv_points(num_points):
     """
@@ -71,6 +89,7 @@ def sample_points_on_mesh(mesh, num_points):
 
     return points, normals
 
+
 def create_rgb_maps(texture_map_res, mesh, device, model: Nuvo):
     """
     Given a mesh and a model that predicts uv coordinates, create RGB maps.
@@ -82,16 +101,17 @@ def create_rgb_maps(texture_map_res, mesh, device, model: Nuvo):
     :return: A list of RGB maps for each chart. Shape (num_charts, resolution, resolution, 3).
     """
 
-    texture_maps = torch.zeros((model.num_charts, texture_map_res, texture_map_res, 3), device=device)
+    texture_maps = torch.zeros(
+        (model.num_charts, texture_map_res, texture_map_res, 3), device=device
+    )
     colors = torch.tensor(mesh.visual.vertex_colors, dtype=torch.float32, device=device)
     points = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
     chart_indices = model.chart_assignment_mlp(points).argmax(dim=1)
     uvs = model.texture_coordinate_mlp(points, chart_indices).cpu().detach().numpy()
     uvs = (uvs * texture_map_res).astype(int)
-    texture_maps[chart_indices, uvs[:, 1], uvs[:, 0], :] = colors[:, :3]
-    
+    texture_maps[chart_indices, uvs[:, 0], uvs[:, 1], :] = colors[:, :3]
+
     return texture_maps
-        
 
 
 def random_tangent_vectors(normals):
