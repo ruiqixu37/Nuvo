@@ -4,6 +4,7 @@ import wandb
 import os
 import torch.nn as nn
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from torchvision.utils import make_grid
 import argparse
 from tqdm import tqdm
 from omegaconf import OmegaConf
@@ -84,7 +85,12 @@ def main(config_path: str):
                 print(
                     f"Epoch: {epoch}, Iter: {i}, Total Loss: {loss_dict['loss_combined'].item()}"
                 )
-
+                
+            if (i + 1) % conf.train.texture_map_save_interval == 0 and conf.train.use_wandb:
+                normal_maps = texture_maps[..., -3:]
+                normal_maps = normal_maps.permute(0, 3, 1, 2)
+                normal_maps = make_grid(normal_maps, nrow=2)
+                wandb.log({"normal_maps": [wandb.Image(normal_maps)]})
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
