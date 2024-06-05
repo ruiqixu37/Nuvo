@@ -15,10 +15,10 @@ def main(config_path: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     conf = OmegaConf.load(config_path)
     model = Nuvo(**conf.model).to(device)
-    sigma = nn.Parameter(torch.tensor(1.0))
+    sigma = nn.Parameter(torch.tensor(1.0, device=device))
     texture_map_res = int(256 * ((2 / conf.model.num_charts) ** 0.5))
     texture_maps = nn.Parameter(
-        torch.randn(conf.model.num_charts, texture_map_res, texture_map_res, 6)
+        torch.randn(conf.model.num_charts, texture_map_res, texture_map_res, 6, device=device)
     )
 
     # optimizers and schedulers
@@ -41,7 +41,7 @@ def main(config_path: str):
             optimizer_nuvo.zero_grad()
             optimizer_sigma.zero_grad()
             optimizer_texture_maps.zero_grad()
-            
+
             # sample points on mesh and UV points
             points, normals = sample_points_on_mesh(mesh, conf.train.G_num)
             uvs = sample_uv_points(conf.train.G_num)
@@ -59,7 +59,7 @@ def main(config_path: str):
                 sigma,
                 texture_maps,
             )
-            
+
             loss.backward()
             optimizer_nuvo.step()
             optimizer_sigma.step()
@@ -67,6 +67,7 @@ def main(config_path: str):
             scheduler_nuvo.step()
             scheduler_sigma.step()
             scheduler_texture_maps.step()
+
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()

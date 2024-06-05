@@ -63,7 +63,7 @@ class ChartAssignmentMLP(nn.Module):
         """
         x = positional_encoding(x, self.degree)
         logits = self.model(x)
-        probabilities = F.softmax(logits, dim=0)
+        probabilities = F.softmax(logits, dim=1)
         return probabilities
 
 

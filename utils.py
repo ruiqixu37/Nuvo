@@ -50,90 +50,98 @@ def sample_points_on_mesh(mesh, num_points):
 
     # Calculate the points
     points = triangles[:, 0] * u + triangles[:, 1] * v + triangles[:, 2] * w
-    
+
     normals = mesh.face_normals[triangle_indices]
 
     return points, normals
 
 
-def random_tangent_vectors(normal):
+def random_tangent_vectors(normals):
     """
     Generate random orthogonal tangent vectors given a normal vector.
 
-    :param normal: The normal vector of shape (3,).
-    :return: Two orthogonal tangent vectors of shape (3,) each.
+    :param normal: The normal vector of shape (num_points, 3)
+    :return: Two lists orthogonal tangent vectors of shape (num_points) each.
     """
-    normal = normal / torch.norm(normal)
-    tangent1 = torch.rand(3)
-    tangent1 -= tangent1.dot(normal) * normal
-    tangent1 /= torch.norm(tangent1)
+    num_points = normals.shape[0]
 
-    tangent2 = torch.linalg.cross(normal, tangent1)
-    tangent2 /= torch.norm(tangent2)
+    # Normalize the normal vectors
+    normals = normals / torch.norm(normals, dim=1, keepdim=True)
+
+    # Generate random vectors and ensure they are orthogonal to the normal vectors
+    tangent1 = torch.rand((num_points, 3), device=normals.device)
+    tangent1 -= (tangent1 * normals).sum(dim=1, keepdim=True) * normals
+    tangent1 /= torch.norm(tangent1, dim=1, keepdim=True)
+
+    # Compute the second tangent vector using the cross product
+    tangent2 = torch.linalg.cross(normals, tangent1)
+    tangent2 /= torch.norm(tangent2, dim=1, keepdim=True)
 
     return tangent1, tangent2
 
 
-def compute_jacobian(mlp, chart_idx, x):
+def compute_jacobian(mlp, chart_idx, points):
     """
     Compute the Jacobian matrix of the MLP at point x using automatic differentiation.
 
     :param mlp: The MLP representing the texture coordinate mapping.
-    :param x: The input point of shape (3,).
-    :return: The Jacobian matrix of shape (2, 3).
+    :param points: The input point of shape (num_points, 3).
+    :return: The Jacobian matrix of shape (num_points, 3, 2).
     """
-    x = x.unsqueeze(0)  # Convert to shape (1, 3) for batch processing
-
     # Compute the gradient with respect to the input
-    x.requires_grad_(True)
-    y = mlp(x, chart_idx)
+    points.requires_grad_(True)
+    y = mlp(points, chart_idx)
 
     jacobian = []
     for i in range(y.shape[1]):
         grads = autograd.grad(
             outputs=y[:, i],
-            inputs=x,
+            inputs=points,
             grad_outputs=torch.ones_like(y[:, i]),
             retain_graph=True,
             create_graph=True,
         )[0]
         jacobian.append(grads)
 
-    jacobian = torch.stack(jacobian, dim=0).squeeze(1)  # Shape (2, 3)
+    jacobian = torch.stack(jacobian, dim=-1)
     return jacobian
 
 
-def compute_uv_vectors(mlp, x, normal, chart_idx, epsilon=1e-2):
+def compute_uv_vectors(mlp, points, normals, chart_idx, epsilon=1e-2):
     """
     Compute the UV vectors for given point x using the MLP and perturbations.
 
     :param mlp: The MLP representing the texture coordinate mapping.
-    :param x: The input point of shape (3,).
-    :param normal: The normal vector at point x of shape (3,).
+    :param points: The input points of shape (num_points, 3).
+    :param normal: The normal vector at point x of shape (num_points, 3).
     :param epsilon: Small perturbation value.
     :return: The UV vectors Dti(εpx) and Dti(εqx).
     """
-    tangent1, tangent2 = random_tangent_vectors(normal)
+    tangent1, tangent2 = random_tangent_vectors(normals)
 
-    jacobian = compute_jacobian(mlp, chart_idx, x)
+    jacobian = compute_jacobian(mlp, chart_idx, points)
 
     # Transform the tangent vectors using the Jacobian matrix
-    Dti_px = jacobian @ (epsilon * tangent1)
-    Dti_qx = jacobian @ (epsilon * tangent2)
+    Dti_pxs = torch.bmm(
+        jacobian.transpose(1, 2), epsilon * tangent1.unsqueeze(-1)
+    ).squeeze(-1)
+    Dti_qxs = torch.bmm(
+        jacobian.transpose(1, 2), epsilon * tangent2.unsqueeze(-1)
+    ).squeeze(-1)
 
-    return Dti_px, Dti_qx
+    return Dti_pxs, Dti_qxs
 
 
-def bilinear_interpolation(grid, uv):
+def bilinear_interpolation(grid, uvs):
     """
     Perform bilinear interpolation on a 2D grid given UV coordinates.
 
     :param grid: A 2D grid of shape (H, W, C).
-    :param uv: UV coordinates of shape (2).
+    :param uv: UV coordinates of shape (num_points, 2).
     :return: Interpolated values of shape (N, C).
     """
     H, W, C = grid.shape
-    u, v = uv[0], uv[1]
+    u, v = uvs[:, 0], uvs[:, 1]
 
     u = u * (W - 1)
     v = v * (H - 1)

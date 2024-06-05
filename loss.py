@@ -5,9 +5,7 @@ from network import Nuvo
 from utils import compute_uv_vectors, bilinear_interpolation
 
 
-def compute_loss(
-    conf, points, normals, uvs, model, sigma, texture_maps
-):
+def compute_loss(conf, points, normals, uvs, model, sigma, texture_maps):
     three_two_three = three_two_three_loss(points, model)
     two_three_two = two_three_two_loss(uvs, model)
     entropy = entropy_loss(uvs, model)
@@ -15,7 +13,7 @@ def compute_loss(
     cluster = cluster_loss(points, model)
     conformal = conformal_loss(points, normals, model)
     stretch = stretch_loss(points, normals, sigma, model)
-    texture = texture_loss(points, texture_maps[-3:], normals, model)
+    texture = texture_loss(points, texture_maps[..., -3:], normals, model)
 
     loss = (
         conf.loss.three_two_three * three_two_three
@@ -32,121 +30,94 @@ def compute_loss(
 
 
 def three_two_three_loss(points, model: Nuvo):
-    G = len(points)
     loss = 0
-    for p in points:
-        chart_probs = model.chart_assignment_mlp(p)
-        for chart_idx in range(model.num_charts):
-            pred_uv = model.texture_coordinate_mlp(p, chart_idx)
-            reconstructed_p = model.surface_coordinate_mlp(pred_uv, chart_idx)
-            loss += chart_probs[chart_idx] * F.mse_loss(p, reconstructed_p)
-    loss /= G
+    chart_probs = model.chart_assignment_mlp(points)
+    for chart_idx in range(model.num_charts):
+        pred_uv = model.texture_coordinate_mlp(points, chart_idx)
+        reconstructed_p = model.surface_coordinate_mlp(pred_uv, chart_idx)
+        loss += (
+            chart_probs[:, chart_idx] * ((points - reconstructed_p).norm(dim=1).pow(2))
+        ).mean()
     return loss
 
 
 def two_three_two_loss(uvs, model: Nuvo):
-    T = len(uvs)
     loss = 0
-    for uv in uvs:
-        for chart_idx in range(model.num_charts):
-            pred_p = model.surface_coordinate_mlp(uv, chart_idx)
-            reconstructed_uv = model.texture_coordinate_mlp(pred_p, chart_idx)
-            loss += F.mse_loss(uv, reconstructed_uv)
-    loss /= T
+    for chart_idx in range(model.num_charts):
+        pred_p = model.surface_coordinate_mlp(uvs, chart_idx)
+        reconstructed_uv = model.texture_coordinate_mlp(pred_p, chart_idx)
+        loss += (uvs - reconstructed_uv).norm(dim=1).pow(2).mean()
     return loss
 
 
 def entropy_loss(uvs, model: Nuvo):
     T = len(uvs)
     loss = 0
-    for uv in uvs:
-        for chart_idx in range(model.num_charts):
-            pred_p = model.surface_coordinate_mlp(uv, chart_idx)
-            chart_probs = model.chart_assignment_mlp(pred_p)
-            loss += -torch.sum(torch.log(chart_probs + 1e-6))
+    for chart_idx in range(model.num_charts):
+        pred_p = model.surface_coordinate_mlp(uvs, chart_idx)
+        chart_probs = model.chart_assignment_mlp(pred_p)
+        loss += -torch.sum(torch.log(chart_probs + 1e-6))
     loss /= T
     return loss
 
 
 def surface_loss(uvs, points, model: Nuvo):
-    G = len(points)
     loss = 0
 
-    reconstructed_p = []
-    for uv in uvs:
-        for chart_idx in range(model.num_charts):
-            pred_p = model.surface_coordinate_mlp(uv, chart_idx)
-            reconstructed_p.append(pred_p)
-    reconstructed_p = torch.stack(reconstructed_p)
-    # get rid of possible duplicate reconstructed 3D points
-    reconstructed_p = torch.unique(reconstructed_p, dim=0)
-    T = len(reconstructed_p)
+    reconstructed_p = torch.tensor([]).to(points.device)
+    for chart_idx in range(model.num_charts):
+        pred_p = model.surface_coordinate_mlp(uvs, chart_idx)
+        reconstructed_p = torch.cat((reconstructed_p, pred_p), dim=0)
 
-    for p in points:
-        min_distance = float("inf")
-        for reconstructed_point in reconstructed_p:
-            distance = F.mse_loss(p, reconstructed_point)
-            min_distance = min(min_distance, distance)
-        loss += min_distance / G
-
-    for reconstructed_point in reconstructed_p:
-        min_distance = float("inf")
-        for p in points:
-            distance = F.mse_loss(p, reconstructed_point)
-            min_distance = min(min_distance, distance)
-        loss += min_distance / T
+    squared_dists = torch.cdist(points, reconstructed_p).pow(2)
+    min_squared_dists = torch.min(squared_dists, dim=1)[0]
+    loss += min_squared_dists.mean()
+    min_squared_dists_reconstructed = torch.min(squared_dists, dim=0)[0]
+    loss += min_squared_dists_reconstructed.mean()
     return loss
 
 
 def cluster_loss(points, model: Nuvo):
-    G = len(points)
-    loss = 0
-    for p in points:
-        chart_probs = model.chart_assignment_mlp(p)
-        for chart_idx in range(model.num_charts):
-            numerator, denominator = 0, 0
-            for p_prime in points:
-                chart_probs_prime = model.chart_assignment_mlp(p_prime)
-                numerator += chart_probs_prime[chart_idx] * p_prime
-                denominator += chart_probs_prime[chart_idx]
-            centroid = numerator / denominator
-            loss += chart_probs[chart_idx] * F.mse_loss(p, centroid)
-    loss /= G
+    chart_probs = model.chart_assignment_mlp(points)
+    numerators = torch.matmul(chart_probs.t(), points)
+    denominators = chart_probs.sum(dim=0)
+    centroids = numerators / denominators[:, None]
+    squared_cidsts = torch.cdist(points, centroids).pow(2)
+    loss = (squared_cidsts * chart_probs).mean()
+
     return loss
 
 
 def conformal_loss(points, normals, model: Nuvo):
-    G = len(points)
     loss = 0
-    for p, n in zip(points, normals):
-        chart_probs = model.chart_assignment_mlp(p)
-        for chart_idx in range(model.num_charts):
-            Dti_px, Dti_qx = compute_uv_vectors(
-                model.texture_coordinate_mlp, p, n, chart_idx
-            )
-            cosine_similarity = torch.dot(Dti_px, Dti_qx) / (
-                torch.norm(Dti_px) * torch.norm(Dti_qx)
-            )
-            loss += chart_probs[chart_idx] * (cosine_similarity**2)
-    loss /= G
+    chart_probs = model.chart_assignment_mlp(points)
+    for chart_idx in range(model.num_charts):
+        Dti_pxs, Dti_qxs = compute_uv_vectors(
+            model.texture_coordinate_mlp, points, normals, chart_idx
+        )
+        cosine_similarity = torch.sum(Dti_pxs * Dti_qxs, dim=1) / (
+            torch.norm(Dti_pxs, dim=1) * torch.norm(Dti_qxs, dim=1)
+        )
+        loss += (chart_probs[:, chart_idx] * (cosine_similarity**2)).mean()
     return loss
 
 
 def stretch_loss(points, normals, sigma: nn.Parameter, model: Nuvo):
-    G = len(points)
     loss = 0
-    for p, n in zip(points, normals):
-        chart_probs = model.chart_assignment_mlp(p)
-        for chart_idx in range(model.num_charts):
-            Dti_px, Dti_qx = compute_uv_vectors(
-                model.texture_coordinate_mlp, p, n, chart_idx
-            )
-            # pad with zeros to make the cross product work
-            Dti_px = torch.cat((Dti_px, torch.zeros(1)), 0)
-            Dti_qx = torch.cat((Dti_qx, torch.zeros(1)), 0)
-            area = torch.norm(torch.cross(Dti_px, Dti_qx))
-            loss += chart_probs[chart_idx] * (torch.norm(area - sigma) ** 2)
-    loss /= G
+    chart_probs = model.chart_assignment_mlp(points)
+    for chart_idx in range(model.num_charts):
+        Dti_pxs, Dti_qxs = compute_uv_vectors(
+            model.texture_coordinate_mlp, points, normals, chart_idx
+        )
+        # pad with zeros to make the cross product work
+        Dti_pxs = torch.cat(
+            (Dti_pxs, torch.zeros(Dti_pxs.shape[0], 1, device=Dti_pxs.device)), 1
+        )
+        Dti_qxs = torch.cat(
+            (Dti_qxs, torch.zeros(Dti_qxs.shape[0], 1, device=Dti_qxs.device)), 1
+        )
+        area = torch.norm(torch.linalg.cross(Dti_pxs, Dti_qxs), dim=1)
+        loss += (chart_probs[:, chart_idx] * ((area - sigma) ** 2)).mean()
     return loss
 
 
@@ -159,16 +130,13 @@ def texture_loss(points, normal_grids, normals, model: Nuvo):
     :param model: The Nuvo model.
     :return: The texture loss.
     """
-
-    G = len(points)
     loss = 0
-
-    for p, n in zip(points, normals):
-        chart_probs = model.chart_assignment_mlp(p)
-        for chart_idx in range(model.num_charts):
-            uv = model.texture_coordinate_mlp(p, chart_idx)
-            normal_map = normal_grids[chart_idx]
-            normal = bilinear_interpolation(normal_map, uv)
-            loss += chart_probs[chart_idx] * F.mse_loss(n, normal)
-    loss /= G
+    chart_probs = model.chart_assignment_mlp(points)
+    for chart_idx in range(model.num_charts):
+        uvs = model.texture_coordinate_mlp(points, chart_idx)
+        normal_map = normal_grids[chart_idx]
+        pred_normals = bilinear_interpolation(normal_map, uvs)
+        loss += (
+            chart_probs[:, chart_idx] * (pred_normals - normals).norm(dim=1).pow(2)
+        ).mean()
     return loss
