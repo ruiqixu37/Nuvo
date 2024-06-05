@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Union
 
 
 def positional_encoding(x, degree=1):
@@ -105,7 +106,7 @@ class TextureCoordinateMLP(nn.Module):
             layers.append(nn.Sigmoid())  # To ensure output is between 0 and 1
             self.mlps.append(nn.Sequential(*layers))
 
-    def forward(self, x, mlp_idx: int = None):
+    def forward(self, x, mlp_idx: Union[int, torch.Tensor] = None):
         """
         Forward pass of the MLP.
 
@@ -113,7 +114,10 @@ class TextureCoordinateMLP(nn.Module):
         :return: outputs tensor from the MLP at index mlp_idx, of shape (batch_size, 2).
         """
         x = positional_encoding(x, self.degree)
-        output = self.mlps[mlp_idx](x)
+        if isinstance(mlp_idx, int):
+            output = self.mlps[mlp_idx](x)
+        else:
+            output = torch.stack([self.mlps[idx](sample) for idx, sample in zip(mlp_idx, x)])
         return output
 
 

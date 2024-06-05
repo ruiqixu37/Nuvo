@@ -5,7 +5,7 @@ from network import Nuvo
 from utils import compute_uv_vectors, bilinear_interpolation
 
 
-def compute_loss(conf, points, normals, uvs, model, sigma, texture_maps):
+def compute_loss(conf, points, normals, uvs, model, sigma, normal_maps):
     three_two_three = three_two_three_loss(points, model)
     two_three_two = two_three_two_loss(uvs, model)
     entropy = entropy_loss(uvs, model)
@@ -13,7 +13,7 @@ def compute_loss(conf, points, normals, uvs, model, sigma, texture_maps):
     cluster = cluster_loss(points, model)
     conformal = conformal_loss(points, normals, model)
     stretch = stretch_loss(points, normals, sigma, model)
-    texture = texture_loss(points, texture_maps[..., -3:], normals, model)
+    texture = texture_loss(points, normal_maps, normals, model)
 
     loss = (
         conf.loss.three_two_three * three_two_three
@@ -27,14 +27,14 @@ def compute_loss(conf, points, normals, uvs, model, sigma, texture_maps):
     )
 
     loss_dict = {
-        "three_two_three": three_two_three,
-        "two_three_two": two_three_two,
-        "entropy": entropy,
-        "surface": surface,
-        "cluster": cluster,
-        "conformal": conformal,
-        "stretch": stretch,
-        "texture": texture,
+        "three_two_three": three_two_three * conf.loss.three_two_three,
+        "two_three_two": two_three_two * conf.loss.two_three_two,
+        "entropy": entropy * conf.loss.entropy,
+        "surface": surface * conf.loss.surface,
+        "cluster": cluster * conf.loss.cluster,
+        "conformal": conformal * conf.loss.conformal,
+        "stretch": stretch * conf.loss.stretch,
+        "texture": texture * conf.loss.texture,
         "loss_combined": loss,
     }
 

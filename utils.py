@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.autograd as autograd
 
+from network import Nuvo
 
 def sample_uv_points(num_points):
     """
@@ -54,6 +55,28 @@ def sample_points_on_mesh(mesh, num_points):
     normals = mesh.face_normals[triangle_indices]
 
     return points, normals
+
+def create_rgb_maps(texture_map_res, mesh, device, model: Nuvo):
+    """
+    Given a mesh and a model that predicts uv coordinates, create RGB maps.
+
+    :param texture_map_res: The resolution of the texture maps.
+    :param mesh: The trimesh object.
+    :param device: The device to use.
+    :param model: The Nuvo model.
+    :return: A list of RGB maps for each chart. Shape (num_charts, resolution, resolution, 3).
+    """
+
+    texture_maps = torch.zeros((model.num_charts, texture_map_res, texture_map_res, 3), device=device)
+    colors = torch.tensor(mesh.visual.vertex_colors, dtype=torch.float32, device=device)
+    points = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
+    chart_indices = model.chart_assignment_mlp(points).argmax(dim=1)
+    uvs = model.texture_coordinate_mlp(points, chart_indices).cpu().detach().numpy()
+    uvs = (uvs * texture_map_res).astype(int)
+    texture_maps[chart_indices, uvs[:, 1], uvs[:, 0], :] = colors[:, :3]
+    
+    return texture_maps
+        
 
 
 def random_tangent_vectors(normals):
