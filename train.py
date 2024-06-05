@@ -10,7 +10,13 @@ from tqdm import tqdm
 from omegaconf import OmegaConf
 
 from network import Nuvo
-from utils import sample_points_on_mesh, sample_uv_points, create_rgb_maps, set_all_seeds
+from utils import (
+    sample_points_on_mesh,
+    sample_uv_points,
+    create_rgb_maps,
+    set_all_seeds,
+    normalize_mesh,
+)
 from loss import compute_loss
 
 
@@ -45,6 +51,7 @@ def main(config_path: str):
 
     # load mesh
     mesh = trimesh.load_mesh(conf.train.mesh_path)
+    mesh = normalize_mesh(mesh)
 
     # train loop
     for epoch in range(conf.train.epochs):
@@ -87,16 +94,19 @@ def main(config_path: str):
                 print(
                     f"Epoch: {epoch}, Iter: {i}, Total Loss: {loss_dict['loss_combined'].item()}"
                 )
-                
-            if (i + 1) % conf.train.texture_map_save_interval == 0 and conf.train.use_wandb:
+
+            if (
+                i + 1
+            ) % conf.train.texture_map_save_interval == 0 and conf.train.use_wandb:
                 val_normal_maps = normal_maps.permute(0, 3, 1, 2)
                 val_normal_maps = make_grid(val_normal_maps, nrow=2)
                 wandb.log({"normal_maps": [wandb.Image(val_normal_maps)]})
-                
+
                 rgb_maps = create_rgb_maps(texture_map_res, mesh, device, model)
                 rgb_maps = rgb_maps.permute(0, 3, 1, 2)
                 rgb_maps = make_grid(rgb_maps, nrow=2)
                 wandb.log({"rgb_maps": [wandb.Image(rgb_maps)]})
+
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()

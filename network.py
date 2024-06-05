@@ -117,7 +117,9 @@ class TextureCoordinateMLP(nn.Module):
         if isinstance(mlp_idx, int):
             output = self.mlps[mlp_idx](x)
         else:
-            output = torch.stack([self.mlps[idx](sample) for idx, sample in zip(mlp_idx, x)])
+            output = torch.stack(
+                [self.mlps[idx](sample) for idx, sample in zip(mlp_idx, x)]
+            )
         return output
 
 
