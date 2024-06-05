@@ -68,7 +68,7 @@ def entropy_loss(uvs, model: Nuvo):
     for chart_idx in range(model.num_charts):
         pred_p = model.surface_coordinate_mlp(uvs, chart_idx)
         chart_probs = model.chart_assignment_mlp(pred_p)
-        loss += -torch.sum(torch.log(chart_probs + 1e-6))
+        loss += -torch.mean(torch.log(chart_probs[:, chart_idx] + 1e-6))
     loss /= T
     return loss
 
@@ -95,7 +95,7 @@ def cluster_loss(points, model: Nuvo):
     denominators = chart_probs.sum(dim=0)
     centroids = numerators / denominators[:, None]
     squared_cidsts = torch.cdist(points, centroids).pow(2)
-    loss = (squared_cidsts * chart_probs).mean()
+    loss = (squared_cidsts * chart_probs).sum() / points.shape[0]
 
     return loss
 
@@ -110,7 +110,7 @@ def conformal_loss(points, normals, model: Nuvo):
         cosine_similarity = torch.sum(Dti_pxs * Dti_qxs, dim=1) / (
             torch.norm(Dti_pxs, dim=1) * torch.norm(Dti_qxs, dim=1)
         )
-        loss += (chart_probs[:, chart_idx] * (cosine_similarity**2)).mean()
+        loss += (chart_probs[:, chart_idx] * (cosine_similarity.pow(2))).mean()
     return loss
 
 
