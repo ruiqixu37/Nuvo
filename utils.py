@@ -1,10 +1,25 @@
 import trimesh
 import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.autograd as autograd
 
 from network import Nuvo
+
+def set_all_seeds(seed):
+    """
+    Set all seeds for reproducibility.
+
+    :param seed: The seed value.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def sample_uv_points(num_points):
     """

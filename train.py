@@ -10,13 +10,14 @@ from tqdm import tqdm
 from omegaconf import OmegaConf
 
 from network import Nuvo
-from utils import sample_points_on_mesh, sample_uv_points, create_rgb_maps
+from utils import sample_points_on_mesh, sample_uv_points, create_rgb_maps, set_all_seeds
 from loss import compute_loss
 
 
 def main(config_path: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     conf = OmegaConf.load(config_path)
+    set_all_seeds(conf.train.seed)
     model = Nuvo(**conf.model).to(device)
     sigma = nn.Parameter(torch.tensor(1.0, device=device))
     texture_map_res = int(256 * ((2 / conf.model.num_charts) ** 0.5))
