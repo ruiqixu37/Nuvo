@@ -215,5 +215,18 @@ class Nuvo(nn.Module):
             num_charts=num_charts,
         )
 
+        self.reset_weights()
+
+    def reset_weights(self):
+        for mlp in [
+            self.chart_assignment_mlp,
+            self.texture_coordinate_mlp,
+            self.surface_coordinate_mlp,
+        ]:
+            for layer in mlp.modules():
+                if isinstance(layer, nn.Linear):
+                    nn.init.kaiming_normal_(layer.weight)
+                    nn.init.zeros_(layer.bias)
+
     def forward(self, x):
         pass
