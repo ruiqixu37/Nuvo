@@ -16,6 +16,7 @@ from utils import (
     create_rgb_maps,
     set_all_seeds,
     normalize_mesh,
+    create_wandb_object,
 )
 from loss import compute_loss
 
@@ -90,22 +91,27 @@ def main(config_path: str):
             if conf.train.use_wandb:
                 wandb.log({k: v.item() for k, v in loss_dict.items()})
                 wandb.log({"sigma": sigma.item()})
+
+                if (i + 1) % conf.train.texture_map_save_interval == 0:
+                    val_normal_maps = normal_maps.permute(0, 3, 1, 2)
+                    val_normal_maps = make_grid(val_normal_maps, nrow=2)
+                    wandb.log({"normal_maps": [wandb.Image(val_normal_maps)]})
+                    val_wandb_object, new_mesh = create_wandb_object(
+                        mesh, device, model
+                    )
+                    wandb.log(
+                        {
+                            "segmented mesh w.r.t chart distribution": val_wandb_object,
+                        }
+                    )
+
+                    # use wandb to save the mesh
+                    mesh_path = os.path.join(wandb.run.dir, f"mesh_{epoch}_{i}.obj")
+                    new_mesh.export(mesh_path)
             else:
                 print(
                     f"Epoch: {epoch}, Iter: {i}, Total Loss: {loss_dict['loss_combined'].item()}"
                 )
-
-            if (
-                i + 1
-            ) % conf.train.texture_map_save_interval == 0 and conf.train.use_wandb:
-                val_normal_maps = normal_maps.permute(0, 3, 1, 2)
-                val_normal_maps = make_grid(val_normal_maps, nrow=2)
-                wandb.log({"normal_maps": [wandb.Image(val_normal_maps)]})
-
-                rgb_maps = create_rgb_maps(texture_map_res, mesh, device, model)
-                rgb_maps = rgb_maps.permute(0, 3, 1, 2)
-                rgb_maps = make_grid(rgb_maps, nrow=2)
-                wandb.log({"rgb_maps": [wandb.Image(rgb_maps)]})
 
 
 if __name__ == "__main__":

@@ -1,10 +1,12 @@
 import trimesh
 import numpy as np
+import matplotlib
 import random
 import torch
 import torch.nn as nn
 import torch.autograd as autograd
 
+from wandb import Object3D
 from network import Nuvo
 
 
@@ -37,6 +39,36 @@ def normalize_mesh(mesh):
     center = (max_bound + min_bound) / 2
     mesh.vertices = (vertices - center) / scale
     return mesh
+
+
+def create_wandb_object(mesh, device, model: Nuvo):
+    """
+    Create a wandb object for visualization.
+
+    :param mesh: The trimesh object.
+    :param model: The Nuvo model.
+    :return: A wandb object for visualization.
+    """
+    vertices = torch.tensor(mesh.vertices, dtype=torch.float32).to(device)
+
+    chart_indices = model.chart_assignment_mlp(vertices).argmax(dim=1)
+    chart_indices = chart_indices.detach().cpu().numpy()
+    # assign colors to vertices based on chart indices. Create distinct colors for each chart.
+    hsv_colors = [(i / model.num_charts, 0.5, 0.5) for i in range(model.num_charts)]
+    rgb_colors = [
+        (255 * matplotlib.colors.hsv_to_rgb(hsv)).astype(int) for hsv in hsv_colors
+    ]
+    colors = [rgb_colors[chart_idx] for chart_idx in chart_indices]
+
+    xyz_rgb = np.concatenate([mesh.vertices, colors], axis=1)
+    wandb_obj = Object3D.from_numpy(xyz_rgb)
+
+    # create mesh as well for debugging
+    new_mesh = trimesh.Trimesh(
+        vertices=mesh.vertices, faces=mesh.faces, vertex_colors=colors
+    )
+
+    return wandb_obj, new_mesh
 
 
 def sample_uv_points(num_points):
