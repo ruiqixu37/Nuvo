@@ -6,8 +6,8 @@ model:
   t_pe_degree: 4
   s_pe_degree: 4
 train:
-  name: nefertiti
-  mesh_path: data/nefertiti.obj
+  name: bunny
+  mesh_path: data/stanford-bunny.obj
   epochs: 1
   iters: 10000
   G_num: 5000
