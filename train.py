@@ -2,6 +2,8 @@ import torch
 import trimesh
 import wandb
 import os
+import json
+import random
 import torch.nn as nn
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torchvision.utils import make_grid
@@ -50,13 +52,35 @@ def main(config_path: str):
         wandb.config = OmegaConf.to_container(conf, resolve=True)
         wandb.init(project="Nuvo", name=conf.train.name)
 
-    # load mesh
-    mesh = trimesh.load_mesh(conf.train.mesh_path)
-    mesh = normalize_mesh(mesh)
+    # load mesh lists and parameters
+    # mesh = trimesh.load_mesh(conf.train.mesh_path)
+    # mesh = normalize_mesh(mesh)
+    parameters_list = []
+    mesh_list = []
+    file_list = os.listdir(conf.train.mesh_path)
+    for file in file_list:
+        if not file.endswith(".obj"):
+            continue
+        mesh = trimesh.load(os.path.join(conf.train.mesh_path, file), force="mesh")
+        mesh = normalize_mesh(mesh)
+        mesh_list.append(mesh)
+        # Assume that for every .obj file, there is a corresponding .json file
+        file_name = ".".join(file.split(".")[:-1])
+        with open(os.path.join(conf.train.mesh_path, f"{file_name}.json"), "r") as file:
+            parameters_dict = json.load(file)
+
+        parameters = torch.tensor(
+            list(parameters_dict.values()), device=device
+        )  # parameter orders in json file need to be the same
+        parameters_list.append(parameters)
 
     # train loop
     for epoch in range(conf.train.epochs):
         for i in tqdm(range(conf.train.iters)):
+            geometry_idx = random.randint(0, len(parameters_list) - 1)
+            mesh = mesh_list[geometry_idx]
+            parameters = parameters_list[geometry_idx]
+
             optimizer_nuvo.zero_grad()
             optimizer_sigma.zero_grad()
             optimizer_normal_maps.zero_grad()
@@ -67,6 +91,8 @@ def main(config_path: str):
             points = torch.tensor(points, dtype=torch.float32, device=device)
             normals = torch.tensor(normals, dtype=torch.float32, device=device)
             uvs = torch.tensor(uvs, dtype=torch.float32, device=device)
+
+            model.update_procedural_parameters(parameters)
 
             # compute losses
             loss_dict = compute_loss(
@@ -112,11 +138,31 @@ def main(config_path: str):
                 print(
                     f"Epoch: {epoch}, Iter: {i}, Total Loss: {loss_dict['loss_combined'].item()}"
                 )
+    
+    # visualize the final meshes
+    for geometry_idx, mesh in enumerate(mesh_list):
+        parameters = parameters_list[geometry_idx]
+        model.update_procedural_parameters(parameters)
+        val_wandb_object, new_mesh = create_wandb_object(mesh, device, model)
+        if conf.train.use_wandb:
+            wandb.log(
+                {
+                    f"final_mesh_{geometry_idx}": val_wandb_object,
+                }
+            )
+            os.makedirs(os.path.join(wandb.run.dir, "final_meshes"), exist_ok=True)
+            mesh_path = os.path.join(wandb.run.dir, "final_meshes", f"mesh_{geometry_idx}.obj")
+            new_mesh.export(mesh_path)
+        else:
+            print(f"Final Mesh {geometry_idx}")
+    
+    model_path = os.path.join(wandb.run.dir, "final_model.ckpt")
+    torch.save(model.state_dict(), model_path)
 
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
-    args.add_argument("--config", type=str, default="configs/nefertiti.yaml")
+    args.add_argument("--config", type=str, default="configs/procedural_spaceships.yaml")
     args = args.parse_args()
 
     main(args.config)

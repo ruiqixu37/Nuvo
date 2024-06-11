@@ -38,10 +38,11 @@ class ChartAssignmentMLP(nn.Module):
         """
         super(ChartAssignmentMLP, self).__init__()
 
+        self.procedural_parameters = None
         self.degree = degree
         self.input_dim = input_dim * (
             2 * degree + 1
-        )  # Adjust input_dim based on positional encoding
+        ) + 2 # Adjust input_dim based on positional encoding
 
         layers = []
         layers.append(nn.Linear(self.input_dim, hidden_dim))
@@ -55,6 +56,9 @@ class ChartAssignmentMLP(nn.Module):
 
         self.model = nn.Sequential(*layers)
 
+    def update_procedural_parameters(self, parameters):
+        self.procedural_parameters = parameters
+
     def forward(self, x):
         """
         Forward pass of the MLP.
@@ -63,6 +67,9 @@ class ChartAssignmentMLP(nn.Module):
         :return: Output tensor of shape (batch_size, output_dim) with probabilities.
         """
         x = positional_encoding(x, self.degree)
+        # concatenate procedural parameters with x
+        repeated_procedural_parameters = self.procedural_parameters.repeat(x.shape[0], 1)
+        x = torch.cat([x, repeated_procedural_parameters], dim=-1)
         logits = self.model(x)
         probabilities = F.softmax(logits, dim=1)
         return probabilities
@@ -89,11 +96,11 @@ class TextureCoordinateMLP(nn.Module):
         :param num_charts: Number of charts (i.e., number of MLPs).
         """
         super(TextureCoordinateMLP, self).__init__()
-
+        self.procedural_parameters = None
         self.degree = degree
         self.input_dim = input_dim * (
             2 * degree + 1
-        )  # Adjust input_dim based on positional encoding
+        ) + 2  # Adjust input_dim based on positional encoding
         self.num_charts = num_charts
 
         self.mlps = nn.ModuleList()
@@ -106,6 +113,9 @@ class TextureCoordinateMLP(nn.Module):
             layers.append(nn.Sigmoid())  # To ensure output is between 0 and 1
             self.mlps.append(nn.Sequential(*layers))
 
+    def update_procedural_parameters(self, parameters):
+        self.procedural_parameters = parameters
+
     def forward(self, x, mlp_idx: Union[int, torch.Tensor] = None):
         """
         Forward pass of the MLP.
@@ -114,6 +124,9 @@ class TextureCoordinateMLP(nn.Module):
         :return: outputs tensor from the MLP at index mlp_idx, of shape (batch_size, 2).
         """
         x = positional_encoding(x, self.degree)
+        # concatenate procedural parameters with x
+        repeated_procedural_parameters = self.procedural_parameters.repeat(x.shape[0], 1)
+        x = torch.cat([x, repeated_procedural_parameters], dim=-1)
         if isinstance(mlp_idx, int):
             output = self.mlps[mlp_idx](x)
         else:
@@ -143,11 +156,11 @@ class SurfaceCoordinateMLP(nn.Module):
         :param num_charts: Number of charts (i.e., number of MLPs).
         """
         super(SurfaceCoordinateMLP, self).__init__()
-
+        self.procedural_parameters = None
         self.degree = degree
         self.input_dim = input_dim * (
             2 * degree + 1
-        )  # Adjust input_dim based on positional encoding
+        ) + 2  # Adjust input_dim based on positional encoding
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
@@ -162,6 +175,9 @@ class SurfaceCoordinateMLP(nn.Module):
             layers.append(nn.Linear(hidden_dim, output_dim))
             self.mlps.append(nn.Sequential(*layers))
 
+    def update_procedural_parameters(self, parameters):
+        self.procedural_parameters = parameters
+
     def forward(self, x, mlp_idx: int = None):
         """
         Forward pass of the MLP.
@@ -170,6 +186,9 @@ class SurfaceCoordinateMLP(nn.Module):
         :return: outputs tensor from the MLP at index mlp_idx, of shape (batch_size, 3).
         """
         x = positional_encoding(x, self.degree)
+        # concatenate procedural parameters with x
+        repeated_procedural_parameters = self.procedural_parameters.repeat(x.shape[0], 1)
+        x = torch.cat([x, repeated_procedural_parameters], dim=-1)
         output = self.mlps[mlp_idx](x)
         return output
 
@@ -186,7 +205,7 @@ class Nuvo(nn.Module):
         num_charts=8,
     ):
         super(Nuvo, self).__init__()
-
+        self.procedural_parameters = None
         self.num_charts = num_charts
 
         self.chart_assignment_mlp = ChartAssignmentMLP(
@@ -227,6 +246,12 @@ class Nuvo(nn.Module):
                 if isinstance(layer, nn.Linear):
                     nn.init.kaiming_normal_(layer.weight)
                     nn.init.zeros_(layer.bias)
+
+    def update_procedural_parameters(self, parameters):
+        self.procedural_parameters = parameters
+        self.chart_assignment_mlp.update_procedural_parameters(parameters)
+        self.texture_coordinate_mlp.update_procedural_parameters(parameters)
+        self.surface_coordinate_mlp.update_procedural_parameters(parameters)
 
     def forward(self, x):
         pass

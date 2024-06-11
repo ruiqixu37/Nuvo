@@ -25,6 +25,8 @@ def compute_loss(conf, points, normals, uvs, model, sigma, normal_maps):
         + conf.loss.stretch * stretch
         + conf.loss.texture * texture
     )
+    
+    assert not torch.isnan(loss).any(), "Loss is NaN"
 
     loss_dict = {
         "three_two_three": three_two_three * conf.loss.three_two_three,
@@ -93,7 +95,7 @@ def cluster_loss(points, model: Nuvo):
     chart_probs = model.chart_assignment_mlp(points)
     numerators = torch.matmul(chart_probs.t(), points)
     denominators = chart_probs.sum(dim=0)
-    centroids = numerators / denominators[:, None]
+    centroids = numerators / (denominators[:, None] + 1e-6)
     squared_cidsts = torch.cdist(points, centroids).pow(2)
     loss = (squared_cidsts * chart_probs / points.shape[0]).sum()
 
