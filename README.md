@@ -20,6 +20,16 @@ I used Pytorch 2.3.0 with CUDA 11.8. Other versions may work, but are not tested
 python train.py --config configs/<config-name.json>
 ```
 
+## Results
+Below are the point cloud visualizations of the predicted UV mappings for the bunny and nefertiti meshes. Vertices that belong to the same UV mapping are assigned the same color. The predicted normal field is also attached for reference.
+1. Bunny
+![PC](assets/bunny.png)
+![NormalField](assets/bunny_normal.png)
+
+2. Nefertiti
+![PC](assets/nefertiti.png)
+![NormalField](assets/nefertiti_normal.png)
+
 ## Acknowledgement
 
 This repository is based on the following paper / resources:
