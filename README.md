@@ -27,7 +27,7 @@ Below are the point cloud visualizations of the predicted UV mappings for the bu
 ![PC](assets/bunny.png)
 ![NormalField](assets/bunny_normal.png)
 
-1. Nefertiti
+2. Nefertiti
 
 ![PC](assets/nefertiti.png)
 ![NormalField](assets/nefertiti_normal.png)
