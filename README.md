@@ -23,10 +23,12 @@ python train.py --config configs/<config-name.json>
 ## Results
 Below are the point cloud visualizations of the predicted UV mappings for the bunny and nefertiti meshes. Vertices that belong to the same UV mapping are assigned the same color. The predicted normal field is also attached for reference.
 1. Bunny
+   
 ![PC](assets/bunny.png)
 ![NormalField](assets/bunny_normal.png)
 
-2. Nefertiti
+1. Nefertiti
+
 ![PC](assets/nefertiti.png)
 ![NormalField](assets/nefertiti_normal.png)
 
