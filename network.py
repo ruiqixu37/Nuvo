@@ -17,7 +17,7 @@ def positional_encoding(x, degree=1):
         return x
 
     pe = [x]
-    for d in range(1, degree + 1):
+    for d in range(degree):
         for fn in [torch.sin, torch.cos]:
             pe.append(fn(2.0**d * math.pi * x))
     return torch.cat(pe, dim=-1)
