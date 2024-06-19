@@ -107,12 +107,13 @@ def sample_points_on_mesh(mesh, num_points):
     # Get vertices of the selected triangles
     triangles = mesh.triangles[triangle_indices]
     # Sample random points in each triangle using barycentric coordinates
-    u = np.random.rand(num_points, 1)
-    v = np.random.rand(num_points, 1)
-    is_valid = u + v <= 1
-    u[~is_valid] = 1 - u[~is_valid]
-    v[~is_valid] = 1 - v[~is_valid]
-    w = 1 - u - v
+    r1 = np.random.rand(num_points, 1)
+    r2 = np.random.rand(num_points, 1)
+
+    u = 1 - np.sqrt(r1)
+    v = np.sqrt(r1) * (1 - r2)
+    w = np.sqrt(r1) * r2
+
 
     # Calculate the points
     points = triangles[:, 0] * u + triangles[:, 1] * v + triangles[:, 2] * w
