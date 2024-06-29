@@ -159,6 +159,10 @@ def main(config_path: str):
     model_path = os.path.join(wandb.run.dir, "final_model.ckpt")
     torch.save(model.state_dict(), model_path)
 
+    # save model 
+    if conf.train.use_wandb:
+        model_path = os.path.join(wandb.run.dir, "final_model.ckpt")
+        torch.save(model.state_dict(), model_path)
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()

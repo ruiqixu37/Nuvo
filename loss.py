@@ -65,13 +65,11 @@ def two_three_two_loss(uvs, model: Nuvo):
 
 
 def entropy_loss(uvs, model: Nuvo):
-    T = len(uvs)
     loss = 0
     for chart_idx in range(model.num_charts):
         pred_p = model.surface_coordinate_mlp(uvs, chart_idx)
         chart_probs = model.chart_assignment_mlp(pred_p)
         loss += -torch.mean(torch.log(chart_probs[:, chart_idx] + 1e-6))
-    loss /= T
     return loss
 
 

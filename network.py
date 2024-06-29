@@ -17,7 +17,7 @@ def positional_encoding(x, degree=1):
         return x
 
     pe = [x]
-    for d in range(1, degree + 1):
+    for d in range(degree):
         for fn in [torch.sin, torch.cos]:
             pe.append(fn(2.0**d * math.pi * x))
     return torch.cat(pe, dim=-1)
@@ -130,9 +130,12 @@ class TextureCoordinateMLP(nn.Module):
         if isinstance(mlp_idx, int):
             output = self.mlps[mlp_idx](x)
         else:
-            output = torch.stack(
-                [self.mlps[idx](sample) for idx, sample in zip(mlp_idx, x)]
-            )
+            output = torch.empty((x.size(0), 2), dtype=x.dtype, device=x.device)
+            
+            for idx in range(0, self.num_charts):
+                mask = mlp_idx == idx
+                output[mask] = self.mlps[idx](x[mask])
+        
         return output
 
 
