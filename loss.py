@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from network import Nuvo
-from utils import compute_uv_vectors, bilinear_interpolation
+from utils import compute_uv_vectors, bilinear_interpolation, random_tangent_vectors
 
 
 def compute_loss(conf, points, normals, uvs, model, sigma, normal_maps):
@@ -102,9 +102,16 @@ def conformal_loss(points, normals, model: Nuvo):
     loss = 0
     chart_probs = model.chart_assignment_mlp(points)
     for chart_idx in range(model.num_charts):
-        Dti_pxs, Dti_qxs = compute_uv_vectors(
-            model.texture_coordinate_mlp, points, normals, chart_idx
-        )
+        pred_uv = model.texture_coordinate_mlp(points, chart_idx)
+        tangent1, tangent2 = random_tangent_vectors(normals)
+        pxs = points + 0.01 * tangent1
+        qxs = points + 0.01 * tangent2
+        Dti_pxs = model.texture_coordinate_mlp(pxs, chart_idx) - pred_uv
+        Dti_qxs = model.texture_coordinate_mlp(qxs, chart_idx) - pred_uv
+
+        # Dti_pxs, Dti_qxs = compute_uv_vectors(
+        #     model.texture_coordinate_mlp, points, normals, chart_idx
+        # )
         cosine_similarity = torch.sum(Dti_pxs * Dti_qxs, dim=1) / (
             torch.norm(Dti_pxs, dim=1) * torch.norm(Dti_qxs, dim=1)
         )
@@ -116,9 +123,16 @@ def stretch_loss(points, normals, sigma: nn.Parameter, model: Nuvo):
     loss = 0
     chart_probs = model.chart_assignment_mlp(points)
     for chart_idx in range(model.num_charts):
-        Dti_pxs, Dti_qxs = compute_uv_vectors(
-            model.texture_coordinate_mlp, points, normals, chart_idx
-        )
+        pred_uv = model.texture_coordinate_mlp(points, chart_idx)
+        tangent1, tangent2 = random_tangent_vectors(normals)
+        pxs = points + 0.01 * tangent1
+        qxs = points + 0.01 * tangent2
+        Dti_pxs = model.texture_coordinate_mlp(pxs, chart_idx) - pred_uv
+        Dti_qxs = model.texture_coordinate_mlp(qxs, chart_idx) - pred_uv
+
+        # Dti_pxs, Dti_qxs = compute_uv_vectors(
+        #     model.texture_coordinate_mlp, points, normals, chart_idx
+        # )
         # pad with zeros to make the cross product work
         Dti_pxs = torch.cat(
             (Dti_pxs, torch.zeros(Dti_pxs.shape[0], 1, device=Dti_pxs.device)), 1
