@@ -8,6 +8,8 @@ import torch.autograd as autograd
 
 from wandb import Object3D
 from network import Nuvo
+from PIL import Image
+import os
 
 
 def set_all_seeds(seed):
@@ -41,6 +43,35 @@ def normalize_mesh(mesh):
     return mesh
 
 
+def create_checkerboard_textures(size, num_squares, dark_colors):
+    """
+    Create a list of checkerboard textures as numpy arrays.
+
+    :param size: The size of the texture (width, height).
+    :param num_squares: The number of squares along one dimension of the checkerboard.
+    :param dark_colors: A list of numpy arrays to be used as the dark colors in the checkerboard.
+    :return: A list of numpy arrays representing the checkerboard textures.
+    """
+    textures = []
+    width, height = size
+    square_size = width // num_squares
+
+    for dark_color in dark_colors:
+        # Create a lighter color by increasing the brightness
+        light_color = np.clip(dark_color * 1.2, 0, 255).astype(np.uint8)
+        
+        texture = np.zeros((height, width, 3), dtype=np.uint8)
+        
+        for i in range(num_squares):
+            for j in range(num_squares):
+                color = dark_color if (i + j) % 2 == 0 else light_color
+                texture[i*square_size:(i+1)*square_size, j*square_size:(j+1)*square_size] = color
+        
+        textures.append(texture)
+
+    return textures
+
+      
 def create_wandb_object(mesh, device, model: Nuvo):
     """
     Create a wandb object for visualization.
@@ -52,20 +83,41 @@ def create_wandb_object(mesh, device, model: Nuvo):
     vertices = torch.tensor(mesh.vertices, dtype=torch.float32).to(device)
 
     chart_indices = model.chart_assignment_mlp(vertices).argmax(dim=1)
-    chart_indices = chart_indices.detach().cpu().numpy()
+    uvs = model.texture_coordinate_mlp(vertices, chart_indices)
+    chart_indices_numpy = chart_indices.detach().cpu().numpy()
+
     # assign colors to vertices based on chart indices. Create distinct colors for each chart.
     hsv_colors = [(i / model.num_charts, 0.5, 0.5) for i in range(model.num_charts)]
     rgb_colors = [
         (255 * matplotlib.colors.hsv_to_rgb(hsv)).astype(int) for hsv in hsv_colors
     ]
-    colors = [rgb_colors[chart_idx] for chart_idx in chart_indices]
+    colors = [rgb_colors[chart_idx] for chart_idx in chart_indices_numpy]
 
     xyz_rgb = np.concatenate([mesh.vertices, colors], axis=1)
     wandb_obj = Object3D.from_numpy(xyz_rgb)
 
-    # create mesh as well for debugging
+    textures = create_checkerboard_textures((256, 256), 16, rgb_colors)
+
+    # save the generated checkerboard texture for debugging
+    output_dir = "checkerboard_textures"
+    os.makedirs(output_dir, exist_ok=True)
+    for index, texture in enumerate(textures):
+        Image.fromarray(texture).save(os.path.join(output_dir, f'checkerboard_texture_{index + 1}.png'))
+
+    chart_colors = torch.zeros((vertices.shape[0], 3), dtype=torch.uint8).to(device)
+
+    # Compute the per-vertex colors
+    for chart_idx in range(model.num_charts):
+        mask = chart_indices == chart_idx
+        texture = torch.tensor(textures[chart_idx], dtype=torch.float32).to(device)
+        uvs_masked = uvs[mask]
+        vertices_colors = bilinear_interpolation(texture, uvs_masked)
+        chart_colors[mask] = vertices_colors.to(torch.uint8)
+
+    chart_colors = chart_colors.cpu().detach().numpy()
+
     new_mesh = trimesh.Trimesh(
-        vertices=mesh.vertices, faces=mesh.faces, vertex_colors=colors
+        vertices=mesh.vertices, faces=mesh.faces, vertex_colors=chart_colors
     )
 
     return wandb_obj, new_mesh
