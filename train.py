@@ -109,14 +109,32 @@ def main(config_path: str):
                     mesh_path = os.path.join(wandb.run.dir, f"mesh_{epoch}_{i}.obj")
                     new_mesh.export(mesh_path)
             else:
-                print(
-                    f"Epoch: {epoch}, Iter: {i}, Total Loss: {loss_dict['loss_combined'].item()}"
-                )
+                if i % 1000 == 0:
+                    print(
+                        f"Epoch: {epoch}, Iter: {i}, Total Loss: {loss_dict['loss_combined'].item()}"
+                    )
 
     # save model 
     if conf.train.use_wandb:
         model_path = os.path.join(wandb.run.dir, "final_model.ckpt")
         torch.save(model.state_dict(), model_path)
+        
+    # save mesh 
+    # compute uvs
+    vertices = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
+    chart_indices = model.chart_assignment_mlp(vertices).argmax(dim=1)
+    uvs = model.texture_coordinate_mlp(vertices, chart_indices)
+    
+    # tile the uvs
+    uvs = uvs.detach().cpu().numpy()
+    # add the chart_indices to the uvs, and then normalize the uvs
+    chart_indices = chart_indices.detach().cpu().numpy()
+    uvs[:, 0] = uvs[:, 0] + chart_indices
+    uvs[:, 0] = uvs[:, 0] / conf.model.num_charts
+    # create object with uvs, vertices, faces
+    texvisuals = trimesh.visual.TextureVisuals(uv=uvs)
+    mesh = trimesh.Trimesh(vertices=vertices.cpu().numpy(), faces=mesh.faces, visual=texvisuals)
+    mesh.export("output/final_mesh.obj")
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
