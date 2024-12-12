@@ -21,16 +21,15 @@ python train.py --config configs/<config-name.json>
 ```
 
 ## Results
-Below are the point cloud visualizations of the predicted UV mappings for the bunny and nefertiti meshes. Vertices that belong to the same UV mapping are assigned the same color. The predicted normal field is also attached for reference.
+Below are the predicted UV mappings for the bunny mesh.
 1. Bunny
-   
-![PC](assets/bunny.png)
-![NormalField](assets/bunny_normal.png)
 
-2. Nefertiti
+https://github.com/user-attachments/assets/df588d3e-0942-4b76-b0a4-735db074a3d7
 
-![PC](assets/nefertiti.png)
-![NormalField](assets/nefertiti_normal.png)
+## TODO:
+- [ ] Implement Nuvo on NeRF
+- [ ] Correct version of normal map optimization
+- [ ] Correct version of finite difference method in distortion loss
 
 ## Acknowledgement
 
