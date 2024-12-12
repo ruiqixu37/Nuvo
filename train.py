@@ -45,6 +45,18 @@ def main(config_path: str):
     )
     scheduler_normal_maps = CosineAnnealingLR(optimizer_normal_maps, T_max=T_max)
 
+    start_iteration = 0
+    if "ckpt" in conf and conf.ckpt:
+        print(f"Loading checkpoint from {conf.ckpt}...")
+        ckpt = torch.load(conf.ckpt, map_location=device)
+        model.load_state_dict(ckpt["model_state_dict"])
+        sigma.data = ckpt["sigma"]
+        optimizer_nuvo.load_state_dict(ckpt["optimizer_nuvo_state_dict"])
+        scheduler_nuvo.load_state_dict(ckpt["scheduler_nuvo_state_dict"])
+        optimizer_sigma.load_state_dict(ckpt["optimizer_sigma_state_dict"])
+        scheduler_sigma.load_state_dict(ckpt["scheduler_sigma_state_dict"])
+        start_iteration = ckpt.get("iteration", 0)
+
     # optional wandb logging
     if conf.train.use_wandb:
         wandb.config = OmegaConf.to_container(conf, resolve=True)
@@ -53,10 +65,11 @@ def main(config_path: str):
     # load mesh
     mesh = trimesh.load_mesh(conf.train.mesh_path)
     mesh = normalize_mesh(mesh)
+    mesh = mesh.subdivide()
 
     # train loop
     for epoch in range(conf.train.epochs):
-        for i in tqdm(range(conf.train.iters)):
+        for i in tqdm(range(start_iteration, conf.train.iters)):
             optimizer_nuvo.zero_grad()
             optimizer_sigma.zero_grad()
             optimizer_normal_maps.zero_grad()
@@ -114,10 +127,38 @@ def main(config_path: str):
                         f"Epoch: {epoch}, Iter: {i}, Total Loss: {loss_dict['loss_combined'].item()}"
                     )
 
+            if (i + 1) % 2000 == 0:
+                vertices = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
+                chart_indices = model.chart_assignment_mlp(vertices).argmax(dim=1)
+                uvs = model.texture_coordinate_mlp(vertices, chart_indices)
+                    
+                # tile the uvs
+                uvs = uvs.detach().cpu().numpy()
+                # add the chart_indices to the uvs, and then normalize the uvs
+                chart_indices = chart_indices.detach().cpu().numpy()
+                uvs[:, 0] = uvs[:, 0] + chart_indices
+                uvs[:, 0] = uvs[:, 0] / conf.model.num_charts
+                # create object with uvs, vertices, faces
+                texvisuals = trimesh.visual.TextureVisuals(uv=uvs)
+                mesh = trimesh.Trimesh(vertices=vertices.cpu().numpy(), faces=mesh.faces, visual=texvisuals)
+                mesh.export("output/final_mesh.obj")
+
     # save model 
-    if conf.train.use_wandb:
-        model_path = os.path.join(wandb.run.dir, "final_model.ckpt")
-        torch.save(model.state_dict(), model_path)
+    # if conf.train.use_wandb:
+    #     model_path = os.path.join(wandb.run.dir, "final_model.ckpt")
+    #     torch.save(model.state_dict(), model_path)
+            if i == (conf.train.iters - 1) and (epoch == conf.train.epochs - 1):
+                ckpt = {
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_nuvo_state_dict": optimizer_nuvo.state_dict(),
+                    "scheduler_nuvo_state_dict": scheduler_nuvo.state_dict(),
+                    "optimizer_sigma_state_dict": optimizer_sigma.state_dict(),
+                    "scheduler_sigma_state_dict": scheduler_sigma.state_dict(),
+                    "sigma": sigma.data,
+                    "epoch": epoch,
+                    "iteration": i,
+                }
+                torch.save(ckpt, f"output/checkpoint_{epoch}_{i}.ckpt")
         
     # save mesh 
     # compute uvs
