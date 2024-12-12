@@ -5,6 +5,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.autograd as autograd
+import torch.nn.functional as F
 
 from wandb import Object3D
 from network import Nuvo
@@ -158,6 +159,9 @@ def sample_points_on_mesh(mesh, num_points):
 
     # Get vertices of the selected triangles
     triangles = mesh.triangles[triangle_indices]
+    triangle_vertex_indices = mesh.faces[triangle_indices]
+    vertex_normals = mesh.vertex_normals[triangle_vertex_indices]
+
     # Sample random points in each triangle using barycentric coordinates
     r1 = np.random.rand(num_points, 1)
     r2 = np.random.rand(num_points, 1)
@@ -170,7 +174,12 @@ def sample_points_on_mesh(mesh, num_points):
     # Calculate the points
     points = triangles[:, 0] * u + triangles[:, 1] * v + triangles[:, 2] * w
 
-    normals = mesh.face_normals[triangle_indices]
+    normals = (
+        vertex_normals[:, 0] * u +
+        vertex_normals[:, 1] * v +
+        vertex_normals[:, 2] * w
+    )
+    normals = normals / np.linalg.norm(normals, axis=1, keepdims=True)
 
     return points, normals
 
@@ -277,42 +286,17 @@ def compute_uv_vectors(mlp, points, normals, chart_idx, epsilon=1e-2):
 
 def bilinear_interpolation(grid, uvs):
     """
-    Perform bilinear interpolation on a 2D grid given UV coordinates.
+    Perform bilinear interpolation using PyTorch's grid_sample.
 
     :param grid: A 2D grid of shape (H, W, C).
-    :param uv: UV coordinates of shape (num_points, 2).
+    :param uvs: UV coordinates of shape (N, 2), where each row contains (u, v) in normalized [0, 1].
     :return: Interpolated values of shape (N, C).
     """
     H, W, C = grid.shape
-    u, v = uvs[:, 0], uvs[:, 1]
+    grid_tensor = grid.permute(2, 0, 1).unsqueeze(0)
 
-    u = u * (W - 1)
-    v = v * (H - 1)
+    uvs_normalized = uvs * 2 - 1
+    uvs_tensor = uvs_normalized.unsqueeze(0).unsqueeze(0)
 
-    u0 = torch.floor(u).long()
-    v0 = torch.floor(v).long()
-    u1 = u0 + 1
-    v1 = v0 + 1
-
-    u0 = torch.clamp(u0, 0, W - 1)
-    v0 = torch.clamp(v0, 0, H - 1)
-    u1 = torch.clamp(u1, 0, W - 1)
-    v1 = torch.clamp(v1, 0, H - 1)
-
-    Ia = grid[v0, u0]
-    Ib = grid[v1, u0]
-    Ic = grid[v0, u1]
-    Id = grid[v1, u1]
-
-    wa = (u1 - u) * (v1 - v)
-    wb = (u1 - u) * (v - v0)
-    wc = (u - u0) * (v1 - v)
-    wd = (u - u0) * (v - v0)
-
-    interpolated = (
-        wa.unsqueeze(-1) * Ia
-        + wb.unsqueeze(-1) * Ib
-        + wc.unsqueeze(-1) * Ic
-        + wd.unsqueeze(-1) * Id
-    )
-    return interpolated
+    interpolated = F.grid_sample(grid_tensor, uvs_tensor, align_corners=True, mode='bilinear')
+    return interpolated.permute(3, 1, 2, 0).squeeze(-1).squeeze(-1)  # Shape: (N, C)

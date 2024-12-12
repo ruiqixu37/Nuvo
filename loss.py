@@ -23,7 +23,7 @@ def compute_loss(conf, points, normals, uvs, model, sigma, normal_maps):
         + conf.loss.cluster * cluster
         + conf.loss.conformal * conformal
         + conf.loss.stretch * stretch
-        + conf.loss.texture * texture
+        # + conf.loss.texture * texture
     )
 
     loss_dict = {
@@ -34,7 +34,7 @@ def compute_loss(conf, points, normals, uvs, model, sigma, normal_maps):
         "cluster": cluster * conf.loss.cluster,
         "conformal": conformal * conf.loss.conformal,
         "stretch": stretch * conf.loss.stretch,
-        "texture": texture * conf.loss.texture,
+        # "texture": texture * conf.loss.texture,
         "loss_combined": loss,
     }
 
@@ -98,20 +98,20 @@ def cluster_loss(points, model: Nuvo):
     return loss
 
 
-def conformal_loss(points, normals, model: Nuvo):
+def conformal_loss(points, normals, model: Nuvo, epsilon=0.01):
     loss = 0
     chart_probs = model.chart_assignment_mlp(points)
     for chart_idx in range(model.num_charts):
-        pred_uv = model.texture_coordinate_mlp(points, chart_idx)
-        tangent1, tangent2 = random_tangent_vectors(normals)
-        pxs = points + 0.01 * tangent1
-        qxs = points + 0.01 * tangent2
-        Dti_pxs = model.texture_coordinate_mlp(pxs, chart_idx) - pred_uv
-        Dti_qxs = model.texture_coordinate_mlp(qxs, chart_idx) - pred_uv
+        # pred_uv = model.texture_coordinate_mlp(points, chart_idx)
+        # tangent1, tangent2 = random_tangent_vectors(normals)
+        # pxs = points + epsilon * tangent1
+        # qxs = points + epsilon * tangent2
+        # Dti_pxs = (model.texture_coordinate_mlp(pxs, chart_idx) - pred_uv) / epsilon
+        # Dti_qxs = (model.texture_coordinate_mlp(qxs, chart_idx) - pred_uv) / epsilon
 
-        # Dti_pxs, Dti_qxs = compute_uv_vectors(
-        #     model.texture_coordinate_mlp, points, normals, chart_idx
-        # )
+        Dti_pxs, Dti_qxs = compute_uv_vectors(
+            model.texture_coordinate_mlp, points, normals, chart_idx
+        )
         cosine_similarity = torch.sum(Dti_pxs * Dti_qxs, dim=1) / (
             torch.norm(Dti_pxs, dim=1) * torch.norm(Dti_qxs, dim=1)
         )
@@ -119,20 +119,20 @@ def conformal_loss(points, normals, model: Nuvo):
     return loss
 
 
-def stretch_loss(points, normals, sigma: nn.Parameter, model: Nuvo):
+def stretch_loss(points, normals, sigma: nn.Parameter, model: Nuvo, epsilon=0.01):
     loss = 0
     chart_probs = model.chart_assignment_mlp(points)
     for chart_idx in range(model.num_charts):
-        pred_uv = model.texture_coordinate_mlp(points, chart_idx)
-        tangent1, tangent2 = random_tangent_vectors(normals)
-        pxs = points + 0.01 * tangent1
-        qxs = points + 0.01 * tangent2
-        Dti_pxs = model.texture_coordinate_mlp(pxs, chart_idx) - pred_uv
-        Dti_qxs = model.texture_coordinate_mlp(qxs, chart_idx) - pred_uv
+        # pred_uv = model.texture_coordinate_mlp(points, chart_idx)
+        # tangent1, tangent2 = random_tangent_vectors(normals)
+        # pxs = points + epsilon * tangent1
+        # qxs = points + epsilon * tangent2
+        # Dti_pxs = (model.texture_coordinate_mlp(pxs, chart_idx) - pred_uv) / epsilon
+        # Dti_qxs = (model.texture_coordinate_mlp(qxs, chart_idx) - pred_uv) / epsilon
 
-        # Dti_pxs, Dti_qxs = compute_uv_vectors(
-        #     model.texture_coordinate_mlp, points, normals, chart_idx
-        # )
+        Dti_pxs, Dti_qxs = compute_uv_vectors(
+            model.texture_coordinate_mlp, points, normals, chart_idx
+        )
         # pad with zeros to make the cross product work
         Dti_pxs = torch.cat(
             (Dti_pxs, torch.zeros(Dti_pxs.shape[0], 1, device=Dti_pxs.device)), 1

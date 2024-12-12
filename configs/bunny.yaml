@@ -1,19 +1,19 @@
 model:
   hidden_dim: 256
   num_layers: 8
-  num_charts: 8
+  num_charts: 4
   c_pe_degree: 1
   t_pe_degree: 4
   s_pe_degree: 4
 train:
   name: bunny
-  mesh_path: data/stanford-bunny.obj
+  mesh_path: data/sofas/stanford-bunny.obj
   epochs: 1
-  iters: 10000
+  iters: 40000
   G_num: 5000
   T_num: 5000
   seed: 37
-  use_wandb: True
+  use_wandb: False
   texture_map_save_interval: 500
 loss:
   three_two_three: 1
@@ -23,9 +23,10 @@ loss:
   cluster: 0.5
   conformal: 0.4
   stretch: 0.1
-  texture: 1
+  texture: 0
 optimizer:
   nuvo_lr: 1e-4
   sigma_lr: 0.1
   normal_grids_lr: 0.04
   rgb_grids_lr: 0.04
+# ckpt: output/checkpoint_0_499.ckpt
