@@ -7,7 +7,7 @@ model:
   s_pe_degree: 4
 train:
   name: bunny
-  mesh_path: data/sofas/stanford-bunny.obj
+  mesh_path: data/stanford-bunny.obj
   epochs: 1
   iters: 40000
   G_num: 5000
