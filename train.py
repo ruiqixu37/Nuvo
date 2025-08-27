@@ -20,7 +20,8 @@ from utils import (
     set_all_seeds,
     normalize_mesh,
     create_wandb_object,
-    create_uv_mesh
+    create_uv_mesh,
+    create_uv_mesh_with_vertex_duplication
 )
 from loss import compute_loss
 
@@ -156,7 +157,7 @@ def main(config_path: str):
                 torch.save(ckpt, f"output/checkpoint_{epoch}_{i}.ckpt")
         
     # save mesh
-    create_uv_mesh(mesh, device, model, conf, "output/final_mesh.obj")
+    create_uv_mesh_with_vertex_duplication(mesh, device, model, conf, "output/final_mesh.obj")
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()

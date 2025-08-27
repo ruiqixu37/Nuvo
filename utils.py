@@ -130,8 +130,8 @@ def create_uv_mesh(mesh, device, model: Nuvo, conf, output_path, checkerboard_re
     :param mesh: The trimesh object.
     :param device: The device to use.
     :param model: The Nuvo model.
-    :param conf: The configuration object.
-    :param output_dir: The output directory for saving textures.
+    :param conf: The Omegaconf object.
+    :param output_path: The output directory for saving textures.
     :param checkerboard_res: The resolution of the checkerboard textures.
     :param squares: The number of squares in the checkerboard.
     :return: A UV mesh for the given 3D mesh.
@@ -168,6 +168,91 @@ def create_uv_mesh(mesh, device, model: Nuvo, conf, output_path, checkerboard_re
     texvisuals = trimesh.visual.TextureVisuals(uv=uvs, image=atlas)
     mesh = trimesh.Trimesh(vertices=vertices.cpu().numpy(), faces=mesh.faces, visual=texvisuals)
     
+    if not os.path.exists(os.path.dirname(output_path)):
+        os.makedirs(os.path.dirname(output_path))
+
+    mesh.export(output_path)
+
+    return mesh
+
+def create_uv_mesh_with_vertex_duplication(mesh, device, model: Nuvo, conf, output_path, checkerboard_res=256, squares=16):
+    """Create a mesh with duplicated vertices for triangles spanning multiple UV charts.
+
+    For each triangle in the mesh, if its vertices belong to different UV charts,
+    the triangle is duplicated for every chart involved. Vertices are duplicated
+    on a per-chart basis so that UV interpolation does not occur across charts.
+
+    :param mesh: The input :class:`trimesh.Trimesh` mesh.
+    :param device: Torch device to run the model on.
+    :param model: The Nuvo model providing chart assignments and UV mappings.
+    :param conf: The Omegaconf object.
+    :param output_path: The output directory for saving textures.
+    :param checkerboard_res: The resolution of the checkerboard textures.
+    :param squares: The number of squares in the checkerboard.
+    :return: A new :class:`trimesh.Trimesh` with duplicated vertices and UVs.
+    """
+
+    vertices = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
+    faces = mesh.faces
+    num_charts = model.num_charts
+
+    # Determine the most likely chart for each vertex
+    chart_indices = model.chart_assignment_mlp(vertices).argmax(dim=1)
+
+    vertex_chart_to_index = {}
+    new_vertices = []
+    new_uvs = []
+    new_faces = []
+
+    for face in faces:
+        face_charts = chart_indices[face]
+        unique_charts = torch.unique(face_charts)
+
+        for chart in unique_charts:
+            face_indices = []
+            chart_int = int(chart)
+            for vi in face:
+                key = (int(vi), chart_int)
+                if key not in vertex_chart_to_index:
+                    uv = (
+                        model.texture_coordinate_mlp(
+                            vertices[vi].unsqueeze(0), chart_int
+                        )
+                        .detach()
+                        .cpu()
+                        .numpy()[0]
+                    )
+                    # Tile the u coordinate so charts occupy disjoint regions
+                    uv[0] = (uv[0] + chart_int) / num_charts
+
+                    vertex_chart_to_index[key] = len(new_vertices)
+                    new_vertices.append(mesh.vertices[vi])
+                    new_uvs.append(uv)
+
+                face_indices.append(vertex_chart_to_index[key])
+
+            new_faces.append(face_indices)
+
+    atlas_w = checkerboard_res * max(1, num_charts)
+    atlas_h = checkerboard_res
+
+    # Build a list of base (dark) colors (numpy arrays) using an HSV sweep
+    dark_colors = [
+        (255 * matplotlib.colors.hsv_to_rgb((c / max(1, num_charts), 0.6, 0.6))).astype(np.uint8)
+        for c in range(num_charts)
+    ]
+
+    # Create per-chart checkerboard textures using the helper
+    textures = create_checkerboard_textures((checkerboard_res, checkerboard_res), squares, dark_colors)
+
+    atlas = Image.new("RGB", (atlas_w, atlas_h), (200, 200, 200))
+    for c, tex in enumerate(textures):
+        # tex is a numpy array HxWx3 (uint8)
+        tile_img = Image.fromarray(tex)
+        atlas.paste(tile_img, (c * checkerboard_res, 0))
+    texvisuals = trimesh.visual.TextureVisuals(uv=np.array(new_uvs), image=atlas)
+    mesh = trimesh.Trimesh(vertices=np.array(new_vertices), faces=np.array(new_faces), visual=texvisuals)
+
     if not os.path.exists(os.path.dirname(output_path)):
         os.makedirs(os.path.dirname(output_path))
 
