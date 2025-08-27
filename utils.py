@@ -123,6 +123,57 @@ def create_wandb_object(mesh, device, model: Nuvo):
 
     return wandb_obj, new_mesh
 
+def create_uv_mesh(mesh, device, model: Nuvo, conf, output_path, checkerboard_res=256, squares=16):
+    """
+    Create a UV mesh for the given 3D mesh.
+
+    :param mesh: The trimesh object.
+    :param device: The device to use.
+    :param model: The Nuvo model.
+    :param conf: The configuration object.
+    :param output_dir: The output directory for saving textures.
+    :param checkerboard_res: The resolution of the checkerboard textures.
+    :param squares: The number of squares in the checkerboard.
+    :return: A UV mesh for the given 3D mesh.
+    """
+    vertices = torch.tensor(mesh.vertices, dtype=torch.float32).to(device)
+    chart_indices = model.chart_assignment_mlp(vertices).argmax(dim=1)
+    uvs = model.texture_coordinate_mlp(vertices, chart_indices)
+    num_charts = int(conf.model.num_charts)
+
+    # tile the uvs
+    uvs = uvs.detach().cpu().numpy()
+    # add the chart_indices to the uvs, and then normalize the uvs
+    chart_indices = chart_indices.detach().cpu().numpy()
+    uvs[:, 0] = uvs[:, 0] + chart_indices
+    uvs[:, 0] = uvs[:, 0] / num_charts
+
+    atlas_w = checkerboard_res * max(1, num_charts)
+    atlas_h = checkerboard_res
+
+    # Build a list of base (dark) colors (numpy arrays) using an HSV sweep
+    dark_colors = [
+        (255 * matplotlib.colors.hsv_to_rgb((c / max(1, num_charts), 0.6, 0.6))).astype(np.uint8)
+        for c in range(num_charts)
+    ]
+
+    # Create per-chart checkerboard textures using the helper
+    textures = create_checkerboard_textures((checkerboard_res, checkerboard_res), squares, dark_colors)
+
+    atlas = Image.new("RGB", (atlas_w, atlas_h), (200, 200, 200))
+    for c, tex in enumerate(textures):
+        # tex is a numpy array HxWx3 (uint8)
+        tile_img = Image.fromarray(tex)
+        atlas.paste(tile_img, (c * checkerboard_res, 0))
+    texvisuals = trimesh.visual.TextureVisuals(uv=uvs, image=atlas)
+    mesh = trimesh.Trimesh(vertices=vertices.cpu().numpy(), faces=mesh.faces, visual=texvisuals)
+    
+    if not os.path.exists(os.path.dirname(output_path)):
+        os.makedirs(os.path.dirname(output_path))
+
+    mesh.export(output_path)
+
+    return mesh
 
 def sample_uv_points(num_points):
     """

@@ -8,6 +8,9 @@ from torchvision.utils import make_grid
 import argparse
 from tqdm import tqdm
 from omegaconf import OmegaConf
+from PIL import Image
+import matplotlib
+import numpy as np
 
 from network import Nuvo
 from utils import (
@@ -17,6 +20,7 @@ from utils import (
     set_all_seeds,
     normalize_mesh,
     create_wandb_object,
+    create_uv_mesh
 )
 from loss import compute_loss
 
@@ -24,6 +28,10 @@ from loss import compute_loss
 def main(config_path: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     conf = OmegaConf.load(config_path)
+
+    if not conf.train.use_wandb and not os.path.exists("output"):
+        os.makedirs("output")
+
     set_all_seeds(conf.train.seed)
     model = Nuvo(**conf.model).to(device)
     sigma = nn.Parameter(torch.tensor(1.0, device=device))
@@ -105,7 +113,7 @@ def main(config_path: str):
                 wandb.log({k: v.item() for k, v in loss_dict.items()})
                 wandb.log({"sigma": sigma.item()})
 
-                if (i + 1) % conf.train.texture_map_save_interval == 0:
+                if (i + 1) % conf.train.save_interval == 0:
                     val_normal_maps = normal_maps.permute(0, 3, 1, 2)
                     val_normal_maps = make_grid(val_normal_maps, nrow=2)
                     wandb.log({"normal_maps": [wandb.Image(val_normal_maps)]})
@@ -122,26 +130,13 @@ def main(config_path: str):
                     mesh_path = os.path.join(wandb.run.dir, f"mesh_{epoch}_{i}.obj")
                     new_mesh.export(mesh_path)
             else:
-                if i % 1000 == 0:
+                if (i + 1) % conf.train.save_interval == 0:
                     print(
                         f"Epoch: {epoch}, Iter: {i}, Total Loss: {loss_dict['loss_combined'].item()}"
                     )
 
-            if (i + 1) % 2000 == 0:
-                vertices = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
-                chart_indices = model.chart_assignment_mlp(vertices).argmax(dim=1)
-                uvs = model.texture_coordinate_mlp(vertices, chart_indices)
-                    
-                # tile the uvs
-                uvs = uvs.detach().cpu().numpy()
-                # add the chart_indices to the uvs, and then normalize the uvs
-                chart_indices = chart_indices.detach().cpu().numpy()
-                uvs[:, 0] = uvs[:, 0] + chart_indices
-                uvs[:, 0] = uvs[:, 0] / conf.model.num_charts
-                # create object with uvs, vertices, faces
-                texvisuals = trimesh.visual.TextureVisuals(uv=uvs)
-                mesh = trimesh.Trimesh(vertices=vertices.cpu().numpy(), faces=mesh.faces, visual=texvisuals)
-                mesh.export("output/final_mesh.obj")
+            if (i + 1) % conf.train.save_interval == 0:
+                create_uv_mesh(mesh, device, model, conf, f"output/iter/{i}/mesh_{i}.obj")
 
     # save model 
     # if conf.train.use_wandb:
@@ -160,22 +155,8 @@ def main(config_path: str):
                 }
                 torch.save(ckpt, f"output/checkpoint_{epoch}_{i}.ckpt")
         
-    # save mesh 
-    # compute uvs
-    vertices = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
-    chart_indices = model.chart_assignment_mlp(vertices).argmax(dim=1)
-    uvs = model.texture_coordinate_mlp(vertices, chart_indices)
-    
-    # tile the uvs
-    uvs = uvs.detach().cpu().numpy()
-    # add the chart_indices to the uvs, and then normalize the uvs
-    chart_indices = chart_indices.detach().cpu().numpy()
-    uvs[:, 0] = uvs[:, 0] + chart_indices
-    uvs[:, 0] = uvs[:, 0] / conf.model.num_charts
-    # create object with uvs, vertices, faces
-    texvisuals = trimesh.visual.TextureVisuals(uv=uvs)
-    mesh = trimesh.Trimesh(vertices=vertices.cpu().numpy(), faces=mesh.faces, visual=texvisuals)
-    mesh.export("output/final_mesh.obj")
+    # save mesh
+    create_uv_mesh(mesh, device, model, conf, "output/final_mesh.obj")
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()

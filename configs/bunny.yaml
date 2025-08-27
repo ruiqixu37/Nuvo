@@ -9,12 +9,12 @@ train:
   name: bunny
   mesh_path: data/stanford-bunny.obj
   epochs: 1
-  iters: 40000
+  iters: 1000
   G_num: 5000
   T_num: 5000
   seed: 37
   use_wandb: False
-  texture_map_save_interval: 500
+  save_interval: 200
 loss:
   three_two_three: 1
   two_three_two: 1

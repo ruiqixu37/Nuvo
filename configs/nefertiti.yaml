@@ -14,7 +14,7 @@ train:
   T_num: 5000
   seed: 37
   use_wandb: True
-  texture_map_save_interval: 500
+  save_interval: 1000
 loss:
   three_two_three: 1
   two_three_two: 1
