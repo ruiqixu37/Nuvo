@@ -118,11 +118,11 @@ class TextureCoordinateMLP(nn.Module):
             output = self.mlps[mlp_idx](x)
         else:
             output = torch.empty((x.size(0), 2), dtype=x.dtype, device=x.device)
-            
+
             for idx in range(0, self.num_charts):
                 mask = mlp_idx == idx
                 output[mask] = self.mlps[idx](x[mask])
-        
+
         return output
 
 

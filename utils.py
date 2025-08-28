@@ -60,19 +60,22 @@ def create_checkerboard_textures(size, num_squares, dark_colors):
     for dark_color in dark_colors:
         # Create a lighter color by increasing the brightness
         light_color = np.clip(dark_color * 1.2, 0, 255).astype(np.uint8)
-        
+
         texture = np.zeros((height, width, 3), dtype=np.uint8)
-        
+
         for i in range(num_squares):
             for j in range(num_squares):
                 color = dark_color if (i + j) % 2 == 0 else light_color
-                texture[i*square_size:(i+1)*square_size, j*square_size:(j+1)*square_size] = color
-        
+                texture[
+                    i * square_size : (i + 1) * square_size,
+                    j * square_size : (j + 1) * square_size,
+                ] = color
+
         textures.append(texture)
 
     return textures
 
-      
+
 def create_wandb_object(mesh, device, model: Nuvo):
     """
     Create a wandb object for visualization.
@@ -103,7 +106,9 @@ def create_wandb_object(mesh, device, model: Nuvo):
     output_dir = "checkerboard_textures"
     os.makedirs(output_dir, exist_ok=True)
     for index, texture in enumerate(textures):
-        Image.fromarray(texture).save(os.path.join(output_dir, f'checkerboard_texture_{index + 1}.png'))
+        Image.fromarray(texture).save(
+            os.path.join(output_dir, f"checkerboard_texture_{index + 1}.png")
+        )
 
     chart_colors = torch.zeros((vertices.shape[0], 3), dtype=torch.uint8).to(device)
 
@@ -123,7 +128,10 @@ def create_wandb_object(mesh, device, model: Nuvo):
 
     return wandb_obj, new_mesh
 
-def create_uv_mesh(mesh, device, model: Nuvo, conf, output_path, checkerboard_res=256, squares=16):
+
+def create_uv_mesh(
+    mesh, device, model: Nuvo, conf, output_path, checkerboard_res=256, squares=16
+):
     """
     Create a UV mesh for the given 3D mesh.
 
@@ -153,12 +161,16 @@ def create_uv_mesh(mesh, device, model: Nuvo, conf, output_path, checkerboard_re
 
     # Build a list of base (dark) colors (numpy arrays) using an HSV sweep
     dark_colors = [
-        (255 * matplotlib.colors.hsv_to_rgb((c / max(1, num_charts), 0.6, 0.6))).astype(np.uint8)
+        (255 * matplotlib.colors.hsv_to_rgb((c / max(1, num_charts), 0.6, 0.6))).astype(
+            np.uint8
+        )
         for c in range(num_charts)
     ]
 
     # Create per-chart checkerboard textures using the helper
-    textures = create_checkerboard_textures((checkerboard_res, checkerboard_res), squares, dark_colors)
+    textures = create_checkerboard_textures(
+        (checkerboard_res, checkerboard_res), squares, dark_colors
+    )
 
     atlas = Image.new("RGB", (atlas_w, atlas_h), (200, 200, 200))
     for c, tex in enumerate(textures):
@@ -166,8 +178,10 @@ def create_uv_mesh(mesh, device, model: Nuvo, conf, output_path, checkerboard_re
         tile_img = Image.fromarray(tex)
         atlas.paste(tile_img, (c * checkerboard_res, 0))
     texvisuals = trimesh.visual.TextureVisuals(uv=uvs, image=atlas)
-    mesh = trimesh.Trimesh(vertices=vertices.cpu().numpy(), faces=mesh.faces, visual=texvisuals)
-    
+    mesh = trimesh.Trimesh(
+        vertices=vertices.cpu().numpy(), faces=mesh.faces, visual=texvisuals
+    )
+
     if not os.path.exists(os.path.dirname(output_path)):
         os.makedirs(os.path.dirname(output_path))
 
@@ -175,7 +189,10 @@ def create_uv_mesh(mesh, device, model: Nuvo, conf, output_path, checkerboard_re
 
     return mesh
 
-def create_uv_mesh_with_vertex_duplication(mesh, device, model: Nuvo, conf, output_path, checkerboard_res=256, squares=16):
+
+def create_uv_mesh_with_vertex_duplication(
+    mesh, device, model: Nuvo, conf, output_path, checkerboard_res=256, squares=16
+):
     """Create a mesh with duplicated vertices for triangles spanning multiple UV charts.
 
     For each triangle in the mesh, if its vertices belong to different UV charts,
@@ -238,12 +255,16 @@ def create_uv_mesh_with_vertex_duplication(mesh, device, model: Nuvo, conf, outp
 
     # Build a list of base (dark) colors (numpy arrays) using an HSV sweep
     dark_colors = [
-        (255 * matplotlib.colors.hsv_to_rgb((c / max(1, num_charts), 0.6, 0.6))).astype(np.uint8)
+        (255 * matplotlib.colors.hsv_to_rgb((c / max(1, num_charts), 0.6, 0.6))).astype(
+            np.uint8
+        )
         for c in range(num_charts)
     ]
 
     # Create per-chart checkerboard textures using the helper
-    textures = create_checkerboard_textures((checkerboard_res, checkerboard_res), squares, dark_colors)
+    textures = create_checkerboard_textures(
+        (checkerboard_res, checkerboard_res), squares, dark_colors
+    )
 
     atlas = Image.new("RGB", (atlas_w, atlas_h), (200, 200, 200))
     for c, tex in enumerate(textures):
@@ -251,7 +272,9 @@ def create_uv_mesh_with_vertex_duplication(mesh, device, model: Nuvo, conf, outp
         tile_img = Image.fromarray(tex)
         atlas.paste(tile_img, (c * checkerboard_res, 0))
     texvisuals = trimesh.visual.TextureVisuals(uv=np.array(new_uvs), image=atlas)
-    mesh = trimesh.Trimesh(vertices=np.array(new_vertices), faces=np.array(new_faces), visual=texvisuals)
+    mesh = trimesh.Trimesh(
+        vertices=np.array(new_vertices), faces=np.array(new_faces), visual=texvisuals
+    )
 
     if not os.path.exists(os.path.dirname(output_path)):
         os.makedirs(os.path.dirname(output_path))
@@ -259,6 +282,7 @@ def create_uv_mesh_with_vertex_duplication(mesh, device, model: Nuvo, conf, outp
     mesh.export(output_path)
 
     return mesh
+
 
 def sample_uv_points(num_points):
     """
@@ -306,14 +330,11 @@ def sample_points_on_mesh(mesh, num_points):
     v = np.sqrt(r1) * (1 - r2)
     w = np.sqrt(r1) * r2
 
-
     # Calculate the points
     points = triangles[:, 0] * u + triangles[:, 1] * v + triangles[:, 2] * w
 
     normals = (
-        vertex_normals[:, 0] * u +
-        vertex_normals[:, 1] * v +
-        vertex_normals[:, 2] * w
+        vertex_normals[:, 0] * u + vertex_normals[:, 1] * v + vertex_normals[:, 2] * w
     )
     normals = normals / np.linalg.norm(normals, axis=1, keepdims=True)
 
@@ -434,5 +455,7 @@ def bilinear_interpolation(grid, uvs):
     uvs_normalized = uvs * 2 - 1
     uvs_tensor = uvs_normalized.unsqueeze(0).unsqueeze(0)
 
-    interpolated = F.grid_sample(grid_tensor, uvs_tensor, align_corners=True, mode='bilinear')
+    interpolated = F.grid_sample(
+        grid_tensor, uvs_tensor, align_corners=True, mode="bilinear"
+    )
     return interpolated.permute(3, 1, 2, 0).squeeze(-1).squeeze(-1)  # Shape: (N, C)

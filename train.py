@@ -21,7 +21,7 @@ from utils import (
     normalize_mesh,
     create_wandb_object,
     create_uv_mesh,
-    create_uv_mesh_with_vertex_duplication
+    create_uv_mesh_with_vertex_duplication,
 )
 from loss import compute_loss
 
@@ -137,12 +137,18 @@ def main(config_path: str):
                     )
 
             if (i + 1) % conf.train.save_interval == 0:
-                create_uv_mesh(mesh, device, model, conf, f"{conf.train.out_dir}/iter/{i}/mesh_{i}.obj")
+                create_uv_mesh(
+                    mesh,
+                    device,
+                    model,
+                    conf,
+                    f"{conf.train.out_dir}/iter/{i}/mesh_{i}.obj",
+                )
 
-    # save model 
-    # if conf.train.use_wandb:
-    #     model_path = os.path.join(wandb.run.dir, "final_model.ckpt")
-    #     torch.save(model.state_dict(), model_path)
+            # save model
+            # if conf.train.use_wandb:
+            #     model_path = os.path.join(wandb.run.dir, "final_model.ckpt")
+            #     torch.save(model.state_dict(), model_path)
             if i == (conf.train.iters - 1) and (epoch == conf.train.epochs - 1):
                 ckpt = {
                     "model_state_dict": model.state_dict(),
@@ -156,11 +162,16 @@ def main(config_path: str):
                 }
                 torch.save(ckpt, f"{conf.train.out_dir}/checkpoint_{epoch}_{i}.ckpt")
 
-    #save mesh
+    # save mesh
     if conf.train.use_vertex_duplication:
-        create_uv_mesh_with_vertex_duplication(mesh, device, model, conf, f"{conf.train.out_dir}/final_mesh.obj")
+        create_uv_mesh_with_vertex_duplication(
+            mesh, device, model, conf, f"{conf.train.out_dir}/final_mesh.obj"
+        )
     else:
-        create_uv_mesh(mesh, device, model, conf, f"{conf.train.out_dir}/final_mesh.obj")
+        create_uv_mesh(
+            mesh, device, model, conf, f"{conf.train.out_dir}/final_mesh.obj"
+        )
+
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
