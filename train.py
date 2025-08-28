@@ -30,8 +30,8 @@ def main(config_path: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     conf = OmegaConf.load(config_path)
 
-    if not conf.train.use_wandb and not os.path.exists("output"):
-        os.makedirs("output")
+    if not conf.train.use_wandb and not os.path.exists(conf.train.out_dir):
+        os.makedirs(conf.train.out_dir)
 
     set_all_seeds(conf.train.seed)
     model = Nuvo(**conf.model).to(device)
@@ -137,7 +137,7 @@ def main(config_path: str):
                     )
 
             if (i + 1) % conf.train.save_interval == 0:
-                create_uv_mesh(mesh, device, model, conf, f"output/iter/{i}/mesh_{i}.obj")
+                create_uv_mesh(mesh, device, model, conf, f"{conf.train.out_dir}/iter/{i}/mesh_{i}.obj")
 
     # save model 
     # if conf.train.use_wandb:
@@ -154,10 +154,13 @@ def main(config_path: str):
                     "epoch": epoch,
                     "iteration": i,
                 }
-                torch.save(ckpt, f"output/checkpoint_{epoch}_{i}.ckpt")
-        
-    # save mesh
-    create_uv_mesh_with_vertex_duplication(mesh, device, model, conf, "output/final_mesh.obj")
+                torch.save(ckpt, f"{conf.train.out_dir}/checkpoint_{epoch}_{i}.ckpt")
+
+    #save mesh
+    if conf.train.use_vertex_duplication:
+        create_uv_mesh_with_vertex_duplication(mesh, device, model, conf, f"{conf.train.out_dir}/final_mesh.obj")
+    else:
+        create_uv_mesh(mesh, device, model, conf, f"{conf.train.out_dir}/final_mesh.obj")
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
