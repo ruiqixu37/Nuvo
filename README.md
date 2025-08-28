@@ -26,10 +26,14 @@ Below are the predicted UV mappings for the bunny mesh.
 
 https://github.com/user-attachments/assets/df588d3e-0942-4b76-b0a4-735db074a3d7
 
-## TODO:
-- [ ] Implement Nuvo on NeRF
-- [ ] Correct version of normal map optimization
-- [ ] Correct version of finite difference method in distortion loss
+## Features
+In the default Nuvo implementation, some triangles may have vertices that span different UV charts. This can be problematic for rendering and texture mapping, as there will be interpolation across the charts (see the first and third rows of the below figure).
+To address this issue, we implemented a vertex duplication feature that prevents this interpolation (see the second and fourth rows).
+
+The vertex duplication is used by default. To disable it, set `use_vertex_duplication` to `false` in the config file.
+
+![](assets/vertex_dup_demo.png)
+
 
 ## Acknowledgement
 
