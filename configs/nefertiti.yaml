@@ -1,7 +1,7 @@
 model:
   hidden_dim: 256
   num_layers: 8
-  num_charts: 8
+  num_charts: 4
   c_pe_degree: 1
   t_pe_degree: 4
   s_pe_degree: 4
@@ -13,8 +13,10 @@ train:
   G_num: 5000
   T_num: 5000
   seed: 37
-  use_wandb: True
-  save_interval: 1000
+  use_wandb: False
+  save_interval: 200
+  out_dir: output/nefertiti
+  use_vertex_duplication: True
 loss:
   three_two_three: 1
   two_three_two: 1

@@ -9,12 +9,14 @@ train:
   name: bunny
   mesh_path: data/stanford-bunny.obj
   epochs: 1
-  iters: 1000
+  iters: 10000
   G_num: 5000
   T_num: 5000
   seed: 37
   use_wandb: False
   save_interval: 200
+  out_dir: output/bunny
+  use_vertex_duplication: True
 loss:
   three_two_three: 1
   two_three_two: 1
